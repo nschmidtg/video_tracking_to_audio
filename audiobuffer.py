@@ -17,13 +17,13 @@ class AudioBuffer:
         self.last_coords_queue1 = Queue()
         self.last_coords_queue2 = Queue()
         self.settings = settings
-        self.track1_data, self.track1_rate = librosa.load('audios/Lluvia/CONSOLIDADO.wav', sr=44.1e3, dtype=np.float64, mono=False)
+        self.track1_data, self.track1_rate = librosa.load('audios/bounce.wav', sr=44.1e3, dtype=np.float64, mono=False)
         # self.track2_data, self.track2_rate = librosa.load('audios/Lluvia/CONSOLIDADO.wav', sr=44.1e3, dtype=np.float64, mono=False)
         print("self.track1_data.shape", self.track1_data.shape)
         # instantiate PyAudio (1)
         self.p = pyaudio.PyAudio()
         
-        self.first_IR_left, self.IR_rate = librosa.load('audios/staircase-441.wav', sr=44.1e3, dtype=np.float64, mono=False)
+        self.first_IR_left, self.IR_rate = librosa.load('audios/bounce.wav', sr=44.1e3, dtype=np.float64, mono=False)
         print("self.first_IR_left.shape[1]", self.first_IR_left.shape[1])
         self.IR_left = self.first_IR_left # Replace for actual IR
         self.chunk_size = 2**13
