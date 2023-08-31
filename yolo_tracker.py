@@ -35,7 +35,7 @@ while True:
     if event == "START":
 
         # Load the YOLOv8 model
-        model = YOLO('yolov8n.pt')
+        model = YOLO('model/yolov8n.pt')
 
         # Open the video file
         video_path = "path/to/video.mp4"
@@ -104,6 +104,7 @@ while True:
 
                         # Break the loop if 'q' is pressed
                         if cv2.waitKey(1) & 0xFF == ord("q"):
+                            settings.keep_playing = False
                             break
                 else:
                     # Break the loop if the end of the video is reached
