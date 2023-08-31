@@ -1,1 +1,6 @@
 audios/
+__pycache__/*
+build/
+dist/
+model/
+.DS_Store

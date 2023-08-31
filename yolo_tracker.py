@@ -1,6 +1,6 @@
 from collections import defaultdict
-from audiobuffer import AudioBuffer
-from settings import Settings
+from classes.audiobuffer import AudioBuffer
+from classes.settings import Settings
 import operator
 import PySimpleGUI as sg
 import sys
