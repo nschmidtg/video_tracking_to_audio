@@ -9,7 +9,7 @@ This project was built for the Chilean 2023 exhibition 'Aparatos de Observación
 ### MacOS
 
 ```
-CONDA_SUBDIR=osx-64 conda create -n yolo python=3.8 wheel=0.38.4 ffmpeg=4.2.2 portaudio==19.6.0
+CONDA_SUBDIR=osx-64 conda create -n yolo python=3.8 wheel=0.38.4 ffmpeg=4.2.2 portaudio=19.6.0 pyinstaller=5.6.2
 conda activate yolo
 conda config --env --set subdir osx-64
 pip install -r requirements.txt
@@ -34,7 +34,11 @@ python yolo_tracker.py
 ### MacOS
 
 ```
-pyinstaller yolo_tracker.spec
+pyinstaller yolo_tracker.spec --noconfirm
+
+pyinstaller yolo_tracker.py --onefile --noconfirm --windowed --hidden-import=cv2.cv2 --paths=classes --add-data="audios/bounce.wav:audios" --clean --additional-hooks-dir=~/miniconda3/envs/yolov8/lib/python3.8/site-packages/torch/lib/libtorch_python.dylib --additional-hooks-dir=~/miniconda3/envs/yolov8/lib/python3.8/site-packages/torch/lib/libtorch.dylib --additional-hooks-dir=~/miniconda3/envs/yolov8/lib/python3.8/site-packages/torch/lib/libtorch_global_deps.dylib
+
+5344
 ```
 
 ### Windows

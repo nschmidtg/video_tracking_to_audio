@@ -1,5 +1,5 @@
 # -*- mode: python ; coding: utf-8 -*-
-from os import path
+
 
 block_cipher = None
 
@@ -7,10 +7,10 @@ block_cipher = None
 a = Analysis(
     ['yolo_tracker.py'],
     pathex=['classes'],
-    binaries=[],
-    datas=[('model/yolov8n.pt', 'model'), ('audios/bounce.wav', 'audios'),('/Users/nicolas.schmidt/miniconda3/envs/yolov8/lib/python3.8/site-packages/torch', 'torch')],
-    hiddenimports=['cv2.cv2'],
-    hookspath=[],
+    binaries=['~/miniconda3/envs/yolov8/lib/python3.8/site-packages/torch/lib/libtorch_python.dylib', '~/miniconda3/envs/yolov8/lib/python3.8/site-packages/torch/lib/libtorch.dylib', '~/miniconda3/envs/yolov8/lib/python3.8/site-packages/torch/lib/libtorch_global_deps.dylib'],
+    datas=[('audios/bounce.wav', 'audios')],
+    hiddenimports=['cv2.cv2','torch'],
+    hookspath=['~/miniconda3/envs/yolov8/lib/python3.8/site-packages'],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],

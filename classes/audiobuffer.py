@@ -6,7 +6,7 @@ import time
 from queue import Queue
 import pdb
 import threading
-from settings import Settings
+from .settings import Settings
 import math
 
 
