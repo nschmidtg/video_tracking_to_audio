@@ -1,5 +1,5 @@
 audios/
-__pycache__/*
+classes/__pycache__/*
 build/
 dist/
 model/
