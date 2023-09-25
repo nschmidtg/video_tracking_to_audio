@@ -13,15 +13,6 @@ import numpy as np
 
 from ultralytics import YOLO
 
-# settings = Settings(
-#                 640,
-#                 480,
-#                 1
-#             )
-            
-# audio_buffer = AudioBuffer(settings)
-# audio_buffer.start()
-
 layout = [
     [
         sg.Frame(
@@ -32,8 +23,6 @@ layout = [
         )
     ]
 ]
-# while True:
-#     time.sleep(0.1)
 
 
 window = sg.Window("Video Tracking to Audio", layout)
@@ -95,14 +84,14 @@ while True:
 
                     # Get the boxes and track IDs
                     boxes = results[0].boxes.xywh.cpu()
+                    audio_buffer.people_counter = min(len(boxes), max_n_people)
                     if results[0].boxes.id is not None:
                         track_ids = results[0].boxes.id.int().cpu().tolist()
 
-                        # Visualize the results on the frame
-                        annotated_frame = results[0].plot()
+                        
 
                         # assign people counter and coords
-                        settings.people_counter = min(len(boxes), max_n_people)
+                        
                         list_a = {value:boxes[count] for count, value in enumerate(track_ids)}
                         sorted_list = collections.OrderedDict(sorted(list_a.items()))
                         people_counter = 0
@@ -112,13 +101,16 @@ while True:
                             settings.coords[people_counter] = box
                             people_counter += 1
 
-                        # Display the annotated frame
-                        cv2.imshow("YOLOv8 Tracking", annotated_frame)
+                    # Visualize the results on the frame
+                    annotated_frame = results[0].plot()
+                    # Display the annotated frame
+                    cv2.imshow("YOLOv8 Tracking", annotated_frame)
 
-                        # Break the loop if 'q' is pressed
-                        if cv2.waitKey(1) & 0xFF == ord("q"):
-                            settings.keep_playing = False
-                            break
+                    # Break the loop if 'q' is pressed
+                    if cv2.waitKey(1) & 0xFF == ord("q"):
+                        audio_buffer.buffer_alive= False
+                        audio_buffer.kill_process()
+                        break
                 else:
                     # Break the loop if the end of the video is reached
                     break
@@ -126,6 +118,7 @@ while True:
             # Release the video capture object and close the display window
             cap.release()
             cv2.destroyAllWindows()
+
         break
 window.close()
     

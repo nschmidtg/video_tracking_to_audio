@@ -16,37 +16,50 @@ class AudioBuffer:
         self.tail = Queue()
         self.last_coords_queue1 = Queue()
         self.last_coords_queue2 = Queue()
+        self.last_coords_queue3 = Queue()
+        self.last_coords_queue4 = Queue()
         self.settings = settings
         self.track1_data, self.track1_rate = librosa.load('audios/Lluvia/CONSOLIDADO.wav', sr=44.1e3, dtype=np.float64, mono=False)
-        # self.track2_data, self.track2_rate = librosa.load('audios/Lluvia/CONSOLIDADO.wav', sr=44.1e3, dtype=np.float64, mono=False)
+        self.track2_data, self.track2_rate = librosa.load('audios/vientos/CONSOLIDADO.wav', sr=44.1e3, dtype=np.float64, mono=False)
+        self.track3_data, self.track3_rate = librosa.load('audios/vientos/viento_santiago3_441.wav', sr=44.1e3, dtype=np.float64, mono=False)
+        self.track4_data, self.track4_rate = librosa.load('audios/lluvia/CONSOLIDADO.wav', sr=44.1e3, dtype=np.float64, mono=False)
         print("self.track1_data.shape", self.track1_data.shape)
         # instantiate PyAudio (1)
         self.p = pyaudio.PyAudio()
         
-        self.first_IR_left, self.IR_rate = librosa.load('audios/Lluvia/CONSOLIDADO.wav', sr=44.1e3, dtype=np.float64, mono=False)
-        print("self.first_IR_left.shape[1]", self.first_IR_left.shape[1])
-        self.IR_left = self.first_IR_left # Replace for actual IR
-        self.chunk_size = 2**16
-        track2_frame = self.track1_data[:,0 : self.chunk_size]
-        track1 = ss.fftconvolve(track2_frame, self.IR_left, mode="full", axes=1)
-        self.tail.put(np.zeros(track2_frame.shape))
+        self.first_IR, self.IR_rate = librosa.load('audios/cathedral_ir_441.wav', sr=44.1e3, dtype=np.float64, mono=False)
+        print("self.first_IR.shape[1]", self.first_IR.shape[1])
+        self.chunk_size = int(44100*0.1)
+        track1_frame = self.track1_data[:,0 : self.chunk_size]
+        track1 = ss.fftconvolve(track1_frame, self.first_IR, mode="full", axes=1)
+        self.tail.put(np.zeros(track1.shape))
         self.last_coords_queue1.put((0, 0, 0, 0))
         self.last_coords_queue2.put((0, 0, 0, 0))
+        self.last_coords_queue3.put((0, 0, 0, 0))
+        self.last_coords_queue4.put((0, 0, 0, 0))
         self.queue1 = Queue()
         self.queue2 = Queue()
+        self.queue3 = Queue()
+        self.queue4 = Queue()
+        self.people_counter = 0
         self.stream = None
-        self.continue_playing = True
         self.fft = np.fft.fft2
         self.ifft = np.fft.ifft2
         self.thread = threading.Thread(target=self.run)
-        self.queue_array = [self.queue1, self.queue2]
-        self.last_coords_queue_array = [self.last_coords_queue1, self.last_coords_queue2]
+        self.queue_array = [self.queue1, self.queue2, self.queue3, self.queue4]
+        self.last_coords_queue_array = [self.last_coords_queue1, self.last_coords_queue2, self.last_coords_queue3, self.last_coords_queue4]
+        self.buffer_alive = True
+        self.stream1 = None
+        self.stream2 = None
+        self.stream3 = None
+        self.stream4 = None
+        self.main_stream = None
 
     def process_queue(self, index):
         queue = self.queue_array[index]
         frames = queue.get()
-        # frames = frames * self.compute_velocity_from_entropy(index)
-        # frames = self._apply_stereo_panning(frames, self.settings.coords[index], self.last_coords_queue_array[index].get())
+        frames = frames * self.compute_velocity_from_entropy(index)
+        frames = self._apply_stereo_panning(frames, self.settings.coords[index], self.last_coords_queue_array[index].get())
         self.last_coords_queue_array[index].put(self.settings.coords[index])
         return frames
 
@@ -55,10 +68,11 @@ class AudioBuffer:
         def callback(in_data, frame_count, time_info, status):
             tail = self.tail.get()
             track = np.zeros((2, self.chunk_size))
-            for i in range(1):
-                track += self.process_queue(i) * (1/2)
+            current_n_people = self.people_counter
+            for i in range(current_n_people):
+                track += self.process_queue(i) * (1/current_n_people)
             
-            # track = ss.fftconvolve(track, self.IR_left, mode="full", axes=1)
+            track = ss.fftconvolve(track, self.first_IR, mode="full", axes=1)
             
             tail_plus_track = 1/2 * tail + 1/2 * track
             actual_tail = tail_plus_track[:, self.chunk_size:]
@@ -85,18 +99,24 @@ class AudioBuffer:
                         stream_callback=self.get_callback(),
                         frames_per_buffer=self.chunk_size)
         
-        stream1 = threading.Thread(target=self._call_populate_chunk, kwargs={'queue': self.queue1, 'track': self.track1_data, 'index': 1})
-        #stream2 = threading.Thread(target=self._call_populate_chunk, kwargs={'queue': self.queue2, 'track': self.track2_data, 'index': 0})
-        stream1.start()
-        #stream2.start()
-        main_stream = threading.Thread(target=self._main_stream)
-        main_stream.start()
-        # wait for stream to finish (5)
-        while self.settings.keep_playing:
-            time.sleep(0.1)
-        stream1.join()
-        #stream2.join()
-        main_stream.join()
+        self.stream1 = threading.Thread(target=self._call_populate_chunk, kwargs={'queue': self.queue1, 'track': self.track1_data, 'index': 0})
+        self.stream2 = threading.Thread(target=self._call_populate_chunk, kwargs={'queue': self.queue2, 'track': self.track2_data, 'index': 1})
+        self.stream3 = threading.Thread(target=self._call_populate_chunk, kwargs={'queue': self.queue3, 'track': self.track3_data, 'index': 2})
+        self.stream4 = threading.Thread(target=self._call_populate_chunk, kwargs={'queue': self.queue4, 'track': self.track4_data, 'index': 3})
+        self.stream1.start()
+        self.stream2.start()
+        self.stream3.start()
+        self.stream4.start()
+        self.main_stream = threading.Thread(target=self._main_stream)
+        self.main_stream.start()        
+
+    def kill_process(self):
+        self.buffer_alive = False
+        self.stream1.join()
+        self.stream2.join()
+        self.stream3.join()
+        self.stream4.join()
+        self.main_stream.join()
 
         # stop stream (6)
         self.stream.stop_stream()
@@ -115,10 +135,11 @@ class AudioBuffer:
         sample_length = int(self.chunk_size//1)
         samples_phase =  int(sample_length//4)
         hop_length = int(sample_length - samples_phase)
-        while self.continue_playing:
-            if queue.qsize() < 3:
+        while self.buffer_alive:
+            print("queue_size: ", queue.qsize())
+            if queue.qsize() < 2:
                 remaining_frames, last_coords = self._populate_chunk(queue, track, index, remaining_frames, last_coords, sample_length, samples_phase, hop_length)
-            time.sleep(0.1)
+            time.sleep(0.01)
 
 
     def _main_stream(self):
@@ -139,7 +160,7 @@ class AudioBuffer:
             else:
                 read_from = np.random.randint(0, bytes.shape[1] - sample_length)
                 sample = bytes[:, read_from:read_from + sample_length]
-                #sample = self._pitch_shift_2d_sample(sample,  int(0 * (1-self.compute_velocity_from_entropy(index))))
+                sample = self._pitch_shift_2d_sample(sample,  int(0 * (1-self.compute_velocity_from_entropy(index))))
                 sample = np.multiply(sample, hanning)
                 if (current_stack_length + sample_length <= self.chunk_size):
                     chunk[:, current_stack_length:current_stack_length + sample_length] += sample
@@ -149,7 +170,7 @@ class AudioBuffer:
                 current_stack_length += hop_length
             samples_per_chunk += 1
                 
-        # sample = self._filter_chunk(sample)
+        sample = self._filter_chunk(sample, index)
         #chunk = self._apply_stereo_panning(chunk, last_coords, current_coords)
         # chunk = np.multiply(chunk, 1)
         chunk = np.multiply(chunk, 1/samples_per_chunk)
@@ -196,7 +217,7 @@ class AudioBuffer:
         return math.sqrt(pow((A[0] - B[0]), 2) + pow((A[1] - B[1]), 2))
 
         
-    def _filter_chunk(self, chunk):
+    def _filter_chunk(self, chunk, index):
         fc = 20000 * self.compute_velocity_from_entropy(index)
         #Design of digital filter requires cut-off frequency to be normalised by sampling_rate/2
         w = fc /(self.track1_rate/2)
