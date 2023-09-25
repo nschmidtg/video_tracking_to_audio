@@ -27,9 +27,9 @@ class AudioBuffer:
         # instantiate PyAudio (1)
         self.p = pyaudio.PyAudio()
         
-        self.first_IR, self.IR_rate = librosa.load('audios/cathedral_ir_441.wav', sr=44.1e3, dtype=np.float64, mono=False)
+        self.first_IR, self.IR_rate = librosa.load('audios/staircase-441.wav', sr=44.1e3, dtype=np.float64, mono=False)
         print("self.first_IR.shape[1]", self.first_IR.shape[1])
-        self.chunk_size = int(44100*0.1)
+        self.chunk_size = int(44100*0.5)
         track1_frame = self.track1_data[:,0 : self.chunk_size]
         track1 = ss.fftconvolve(track1_frame, self.first_IR, mode="full", axes=1)
         self.tail.put(np.zeros(track1.shape))
@@ -72,7 +72,8 @@ class AudioBuffer:
             for i in range(current_n_people):
                 track += self.process_queue(i) * (1/current_n_people)
             
-            track = ss.fftconvolve(track, self.first_IR, mode="full", axes=1)
+            track_rev = ss.fftconvolve(track, self.first_IR, mode="full", axes=1)
+            track = track_rev * 0.8 + 0.2*np.concatenate([track, np.zeros((2, track_rev.shape[1] - track.shape[1]))], axis=1)
             
             tail_plus_track = 1/2 * tail + 1/2 * track
             actual_tail = tail_plus_track[:, self.chunk_size:]
@@ -81,7 +82,7 @@ class AudioBuffer:
             actual_combinated_chunk[0::2] = actual_chunk[0]
             actual_combinated_chunk[1::2] = actual_chunk[1]
             ret_data = actual_combinated_chunk.astype(np.float32).tobytes()
-            actual_tail = np.concatenate([actual_tail, np.zeros((2, track.shape[1] - actual_tail.shape[1]))], axis=1)
+            actual_tail = np.concatenate([actual_tail, np.zeros((2, track_rev.shape[1] - actual_tail.shape[1]))], axis=1)
             self.tail.put(actual_tail)
             # return (track.astype(np.float32).tobytes(), pyaudio.paContinue)
             return (ret_data, pyaudio.paContinue)
@@ -129,17 +130,17 @@ class AudioBuffer:
         queue = kwargs['queue']
         track = kwargs['track']
         index = kwargs['index']
-        sample_length = int(self.chunk_size//1)
+
+        sample_length = int(self.chunk_size//2)
         remaining_frames = np.zeros((2, sample_length))
         last_coords = (0, 0)
-        sample_length = int(self.chunk_size//1)
-        samples_phase =  int(sample_length//4)
+        samples_phase =  int(sample_length//3*2)
         hop_length = int(sample_length - samples_phase)
         while self.buffer_alive:
-            print("queue_size: ", queue.qsize())
             if queue.qsize() < 2:
+                print("queue_size: ", queue.qsize())
                 remaining_frames, last_coords = self._populate_chunk(queue, track, index, remaining_frames, last_coords, sample_length, samples_phase, hop_length)
-            time.sleep(0.01)
+            time.sleep(0.1)
 
 
     def _main_stream(self):
