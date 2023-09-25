@@ -4,11 +4,23 @@ from classes.settings import Settings
 import operator
 import PySimpleGUI as sg
 import sys
+import pdb
+import collections
+import time
 
 import cv2
 import numpy as np
 
 from ultralytics import YOLO
+
+# settings = Settings(
+#                 640,
+#                 480,
+#                 1
+#             )
+            
+# audio_buffer = AudioBuffer(settings)
+# audio_buffer.start()
 
 layout = [
     [
@@ -20,13 +32,14 @@ layout = [
         )
     ]
 ]
+# while True:
+#     time.sleep(0.1)
+
+
+window = sg.Window("Video Tracking to Audio", layout)
 
 
 
-window = sg.Window("Image to MIDI", layout)
-
-
-# audio_buffer.start()
 while True:
     event, values = window.read()
 
@@ -90,10 +103,10 @@ while True:
 
                         # assign people counter and coords
                         settings.people_counter = min(len(boxes), max_n_people)
-                        
-                        sorted_list = sorted(list(zip(track_ids, boxes)), key=operator.itemgetter(1))
+                        list_a = {value:boxes[count] for count, value in enumerate(track_ids)}
+                        sorted_list = collections.OrderedDict(sorted(list_a.items()))
                         people_counter = 0
-                        for _, box in sorted_list:
+                        for box in sorted_list.values():
                             if people_counter >= max_n_people:
                                 break
                             settings.coords[people_counter] = box

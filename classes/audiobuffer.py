@@ -17,19 +17,19 @@ class AudioBuffer:
         self.last_coords_queue1 = Queue()
         self.last_coords_queue2 = Queue()
         self.settings = settings
-        self.track1_data, self.track1_rate = librosa.load('audios/bounce.wav', sr=44.1e3, dtype=np.float64, mono=False)
+        self.track1_data, self.track1_rate = librosa.load('audios/Lluvia/CONSOLIDADO.wav', sr=44.1e3, dtype=np.float64, mono=False)
         # self.track2_data, self.track2_rate = librosa.load('audios/Lluvia/CONSOLIDADO.wav', sr=44.1e3, dtype=np.float64, mono=False)
         print("self.track1_data.shape", self.track1_data.shape)
         # instantiate PyAudio (1)
         self.p = pyaudio.PyAudio()
         
-        self.first_IR_left, self.IR_rate = librosa.load('audios/bounce.wav', sr=44.1e3, dtype=np.float64, mono=False)
+        self.first_IR_left, self.IR_rate = librosa.load('audios/Lluvia/CONSOLIDADO.wav', sr=44.1e3, dtype=np.float64, mono=False)
         print("self.first_IR_left.shape[1]", self.first_IR_left.shape[1])
         self.IR_left = self.first_IR_left # Replace for actual IR
-        self.chunk_size = 2**13
+        self.chunk_size = 2**16
         track2_frame = self.track1_data[:,0 : self.chunk_size]
         track1 = ss.fftconvolve(track2_frame, self.IR_left, mode="full", axes=1)
-        self.tail.put(np.zeros(track1.shape))
+        self.tail.put(np.zeros(track2_frame.shape))
         self.last_coords_queue1.put((0, 0, 0, 0))
         self.last_coords_queue2.put((0, 0, 0, 0))
         self.queue1 = Queue()
@@ -45,8 +45,8 @@ class AudioBuffer:
     def process_queue(self, index):
         queue = self.queue_array[index]
         frames = queue.get()
-        frames = frames * self.compute_velocity_from_entropy()
-        frames = self._apply_stereo_panning(frames, self.settings.coords[index], self.last_coords_queue_array[index].get())
+        # frames = frames * self.compute_velocity_from_entropy(index)
+        # frames = self._apply_stereo_panning(frames, self.settings.coords[index], self.last_coords_queue_array[index].get())
         self.last_coords_queue_array[index].put(self.settings.coords[index])
         return frames
 
@@ -57,7 +57,8 @@ class AudioBuffer:
             track = np.zeros((2, self.chunk_size))
             for i in range(1):
                 track += self.process_queue(i) * (1/2)
-            track = ss.fftconvolve(track, self.IR_left, mode="full", axes=1)
+            
+            # track = ss.fftconvolve(track, self.IR_left, mode="full", axes=1)
             
             tail_plus_track = 1/2 * tail + 1/2 * track
             actual_tail = tail_plus_track[:, self.chunk_size:]
@@ -68,6 +69,7 @@ class AudioBuffer:
             ret_data = actual_combinated_chunk.astype(np.float32).tobytes()
             actual_tail = np.concatenate([actual_tail, np.zeros((2, track.shape[1] - actual_tail.shape[1]))], axis=1)
             self.tail.put(actual_tail)
+            # return (track.astype(np.float32).tobytes(), pyaudio.paContinue)
             return (ret_data, pyaudio.paContinue)
         return callback
     
@@ -137,7 +139,7 @@ class AudioBuffer:
             else:
                 read_from = np.random.randint(0, bytes.shape[1] - sample_length)
                 sample = bytes[:, read_from:read_from + sample_length]
-                #sample = self._pitch_shift_2d_sample(sample,  int(0 * (1-self.compute_velocity_from_entropy())))
+                #sample = self._pitch_shift_2d_sample(sample,  int(0 * (1-self.compute_velocity_from_entropy(index))))
                 sample = np.multiply(sample, hanning)
                 if (current_stack_length + sample_length <= self.chunk_size):
                     chunk[:, current_stack_length:current_stack_length + sample_length] += sample
@@ -175,18 +177,18 @@ class AudioBuffer:
         chunk_r = np.multiply(chunk[1, :], (1 / self.settings.x_screen_size) * ramp)
         return np.array((chunk_l, chunk_r))
 
-    def _sum_distances(self):
-        current = self.settings.coords[self.index]
+    def _sum_distances(self, index):
+        current = self.settings.coords[index]
         total = 0
         for coords in self.settings.coords:
             total += self.calculate_distance(current, coords)
         return total
             
-    def compute_velocity_from_entropy(self):
+    def compute_velocity_from_entropy(self, index):
         value = 0.3
         if self.settings.people_counter > 1:
             max_value = self.calculate_distance((0, 0), (self.settings.x_screen_size, self.settings.y_screen_size)) * (self.settings.people_counter - 1)
-            value = math.pow(1 - (self._sum_distances() / max_value), 2)
+            value = math.pow(1 - (self._sum_distances(index) / max_value), 2)
         # print(value)
         return value
 
@@ -195,7 +197,7 @@ class AudioBuffer:
 
         
     def _filter_chunk(self, chunk):
-        fc = 20000 * self.compute_velocity_from_entropy()
+        fc = 20000 * self.compute_velocity_from_entropy(index)
         #Design of digital filter requires cut-off frequency to be normalised by sampling_rate/2
         w = fc /(self.track1_rate/2)
         b, a = ss.butter(5, w, 'low', analog = False)
