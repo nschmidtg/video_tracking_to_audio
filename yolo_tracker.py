@@ -45,7 +45,7 @@ while True:
 
         # Store the track history
         track_history = defaultdict(lambda: [])
-        max_n_people = 1
+        max_n_people = 8
 
         success, frame = cap.read()
         if success:
@@ -77,12 +77,12 @@ while True:
                         max_det=max_n_people,
                         vid_stride=False,
                         classes=0,
+                        verbose=False,
                     )
 
                     # Get the boxes and track IDs
                     boxes = results[0].boxes.xywh.cpu()
                     audio_buffer.people_counter = min(len(boxes), max_n_people)
-                    print("people_counter:" , audio_buffer.people_counter)
                     if results[0].boxes.id is not None:
                         track_ids = results[0].boxes.id.int().cpu().tolist()
 
@@ -106,8 +106,7 @@ while True:
 
                     # Break the loop if 'q' is pressed
                     if cv2.waitKey(1) & 0xFF == ord("q"):
-                        audio_buffer.buffer_alive= False
-                        audio_buffer.kill_process()
+                        audio_buffer.join()
                         break
                 else:
                     # Break the loop if the end of the video is reached

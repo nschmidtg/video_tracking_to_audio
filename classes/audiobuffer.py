@@ -4,10 +4,9 @@ import numpy as np
 import librosa
 import time
 from queue import Queue
-import pdb
 import threading
-from .settings import Settings
 import math
+
 
 class Stream(threading.Thread):
     def __init__(self, path, chunk_size):
@@ -22,6 +21,10 @@ class Stream(threading.Thread):
         self.hop_length = int(self.sample_length//10)
         threading.Thread.__init__(self)
         
+    def join(self):
+        self.buffer_alive = False
+        super().join()
+        
     def run(self):
         remaining_frames = np.zeros((2, self.sample_length))
         last_coords = (0, 0)
@@ -31,9 +34,7 @@ class Stream(threading.Thread):
             else:
                 time.sleep(0.05)
                 
-    def _populate_chunk(self, remaining_frames, last_coords):
-        bytes = self.track_data
-        
+    def _populate_chunk(self, remaining_frames, last_coords):        
         samples_per_chunk = 0
         current_coords = (0, 0, 0, 0) # self.settings.coords[index]
         current_stack_length = 0
@@ -44,8 +45,8 @@ class Stream(threading.Thread):
                 chunk[:, :remaining_frames.shape[1]] += remaining_frames
                 remaining_frames = np.zeros((2, self.sample_length))
             else:
-                read_from = np.random.randint(0, bytes.shape[1] - self.sample_length)
-                sample = bytes[:, read_from:read_from + self.sample_length]
+                read_from = np.random.randint(0, self.track_data.shape[1] - self.sample_length)
+                sample = self.track_data[:, read_from:read_from + self.sample_length]
                 if (current_stack_length + self.sample_length <= self.chunk_size):
                     chunk[:, current_stack_length:current_stack_length + self.sample_length] += sample
                 else:
@@ -72,29 +73,24 @@ class AudioBuffer(threading.Thread):
         self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 6-lluvia bosque.wav', self.chunk_size))
         self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 7-lluvia dentro de furgon.wav', self.chunk_size))
         self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 8-lluvia dentro del furgon.wav', self.chunk_size))
-        self.track1_rate = self.stream_array[0].track_rate
         # instantiate PyAudio (1)
         self.p = pyaudio.PyAudio()
-        
         self.first_IR, self.IR_rate = librosa.load('audios/IRs/208-R1_LargeRoom.wav', sr=44.1e3, dtype=np.float64, mono=False)
-        
         track1_frame = self.stream_array[0].track_data[:,0 : self.chunk_size]
         track1 = ss.fftconvolve(track1_frame, self.first_IR, mode="full", axes=1)
         self.tail.put(np.zeros(track1.shape))
-        self.queue1 = Queue()
         self.people_counter = 0
-        self.stream = None
-        self.fft = np.fft.fft2
-        self.ifft = np.fft.ifft2
-        self.thread = threading.Thread(target=self.run)
-        self.buffer_alive = True
-        self.stream1 = None
-        self.main_stream = None
-        self.sample_length = int(self.chunk_size//4)
-        self.samples_phase = int(self.sample_length//10)
-        self.hop_length = int(self.sample_length - self.samples_phase)
         self.empty_chunk = np.zeros((2, self.chunk_size))
         self.doubled_empty_chunk = np.zeros((self.chunk_size * 2))
+        self.stream = self.p.open(
+            format=pyaudio.paFloat32,
+            channels=2,
+            rate=int(44100),
+            output=True,
+            stream_callback=self.get_callback(),
+            frames_per_buffer=self.chunk_size
+        )
+        threading.Thread.__init__(self)
 
     def process_queue(self, index):
         queue = self.stream_array[index].queue
@@ -103,7 +99,6 @@ class AudioBuffer(threading.Thread):
         self.stream_array[index].last_coords_queue.put(self.settings.coords[index])
         return frames
 
-
     def get_callback(self):
         def callback(in_data, frame_count, time_info, status):
             track = self.empty_chunk.copy()
@@ -111,48 +106,28 @@ class AudioBuffer(threading.Thread):
             print("current_n_people", current_n_people)
             for i in range(current_n_people):
                 track += self.process_queue(i) # * (1/current_n_people)
-            
-            actual_combinated_chunk = self.doubled_empty_chunk.copy()
-            actual_combinated_chunk[0::2] = track[0]
-            actual_combinated_chunk[1::2] = track[1]
+            actual_combinated_chunk = self._intercalate_channels(track)
             ret_data = actual_combinated_chunk.astype(np.float32).tobytes()
             return (ret_data, pyaudio.paContinue)
         return callback
     
     def start(self):
-        self.thread.start()
-
-    def run(self):
-        # open stream using callback (3)
-        self.stream = self.p.open(format=pyaudio.paFloat32,
-                        channels=2,
-                        rate=int(44100),
-                        output=True,
-                        stream_callback=self.get_callback(),
-                        frames_per_buffer=self.chunk_size)
-        
         for i in range(self.settings.max_people_counter):
             stream = self.stream_array[i]
             stream.start()
-        self.main_stream = threading.Thread(target=self._main_stream)
-        self.main_stream.start()
+        super().start()
 
-    def kill_process(self):
-        self.buffer_alive = False
+    def run(self):
+        self.stream.start_stream()
+        
+    def join(self):
         for i in range(self.settings.max_people_counter):
             stream = self.stream_array[i]
-            stream.stream.join()
-        self.main_stream.join()
-
-        # stop stream (6)
+            stream.join()
         self.stream.stop_stream()
         self.stream.close()
-
-        # close PyAudio (7)
         self.p.terminate()
-
-    def _main_stream(self):
-        self.stream.start_stream()
+        super().join()
     
     def _intercalate_channels(self, chunk):
         return np.ravel(np.column_stack((chunk[0, :], chunk[1, :])))
@@ -176,7 +151,6 @@ class AudioBuffer(threading.Thread):
         if self.settings.people_counter > 1:
             max_value = self.calculate_distance((0, 0), (self.settings.x_screen_size, self.settings.y_screen_size)) * (self.settings.people_counter - 1)
             value = math.pow(1 - (self._sum_distances(index) / max_value), 3)
-        # print(value)
         return value
 
     def calculate_distance(self, A, B):
