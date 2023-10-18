@@ -19,18 +19,18 @@ class AudioBuffer:
         self.last_coords_queue3 = Queue()
         self.last_coords_queue4 = Queue()
         self.settings = settings
-        self.track1_data, self.track1_rate = librosa.load('audios/Lluvia/CONSOLIDADO.wav', sr=44.1e3, dtype=np.float64, mono=False)
-        self.track2_data, self.track2_rate = librosa.load('audios/vientos/CONSOLIDADO.wav', sr=44.1e3, dtype=np.float64, mono=False)
-        self.track3_data, self.track3_rate = librosa.load('audios/vientos/viento_santiago3_441.wav', sr=44.1e3, dtype=np.float64, mono=False)
-        self.track4_data, self.track4_rate = librosa.load('audios/lluvia/CONSOLIDADO.wav', sr=44.1e3, dtype=np.float64, mono=False)
+        self.track1_data, self.track1_rate = librosa.load('audios/larga_duracion/Lluvias/lluvia 1.WAV', sr=96000, dtype=np.float64, mono=False)
+        self.track2_data, self.track2_rate = librosa.load('audios/larga_duracion/Lluvias/lluvia 2.WAV', sr=96000, dtype=np.float64, mono=False)
+        self.track3_data, self.track3_rate = librosa.load('audios/larga_duracion/Lluvias/lluvia 3.WAV', sr=96000, dtype=np.float64, mono=False)
+        self.track4_data, self.track4_rate = librosa.load('audios/larga_duracion/Lluvias/lluvia 4.WAV', sr=96000, dtype=np.float64, mono=False)
         print("self.track1_data.shape", self.track1_data.shape)
         # instantiate PyAudio (1)
         self.p = pyaudio.PyAudio()
         
-        self.first_IR, self.IR_rate = librosa.load('audios/staircase-441.wav', sr=44.1e3, dtype=np.float64, mono=False)
+        self.first_IR, self.IR_rate = librosa.load('audios/IRs/314-Cathedral.wav', sr=44.1e3, dtype=np.float64, mono=False)
         print("self.first_IR.shape[1]", self.first_IR.shape[1])
         self.chunk_size = int(44100*0.5)
-        track1_frame = self.track1_data[:,0 : self.chunk_size]
+        track1_frame = self.track1_data[:, 0:self.chunk_size]
         track1 = ss.fftconvolve(track1_frame, self.first_IR, mode="full", axes=1)
         self.tail.put(np.zeros(track1.shape))
         self.last_coords_queue1.put((0, 0, 0, 0))
@@ -99,7 +99,7 @@ class AudioBuffer:
             track_rev = ss.fftconvolve(track, self.first_IR, mode="full", axes=1)
             track = track_rev * 0.8 + 0.2*np.concatenate([track, np.zeros((2, track_rev.shape[1] - track.shape[1]))], axis=1)
             
-            tail_plus_track = 1/2 * tail + 1/2 * track
+            tail_plus_track = (1/2 * tail + 1/2 * track) * 5
             actual_tail = tail_plus_track[:, self.chunk_size:]
             actual_chunk = tail_plus_track[:, :self.chunk_size]
             actual_combinated_chunk = np.zeros((2*self.chunk_size))
