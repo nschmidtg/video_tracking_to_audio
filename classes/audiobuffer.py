@@ -75,7 +75,7 @@ class AudioBuffer(threading.Thread):
         self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 8-lluvia dentro del furgon.wav', self.chunk_size))
         # instantiate PyAudio (1)
         self.p = pyaudio.PyAudio()
-        self.first_IR, self.IR_rate = librosa.load('audios/IRs/208-R1_LargeRoom.wav', sr=44.1e3, dtype=np.float64, mono=False)
+        self.first_IR, self.IR_rate = librosa.load('audios/IRs/314-Cathedral-norm.wav', sr=44.1e3, dtype=np.float64, mono=False)
         track1_frame = self.stream_array[0].track_data[:,0 : self.chunk_size]
         track1 = ss.fftconvolve(track1_frame, self.first_IR, mode="full", axes=1)
         self.tail.put(np.zeros(track1.shape))
@@ -98,7 +98,19 @@ class AudioBuffer(threading.Thread):
         frames = frames * self.compute_velocity_from_entropy(index)
         self.stream_array[index].last_coords_queue.put(self.settings.coords[index])
         return frames
-
+    
+    def _apply_reverb(self, chunk, wet_level=0.2):
+        track_rev = ss.fftconvolve(chunk, self.first_IR, mode="full", axes=1)
+        dry_track_with_zeros = np.concatenate([chunk, np.zeros((2, track_rev.shape[1] - chunk.shape[1]))], axis=1)
+        tail = self.tail.get()
+        track = np.multiply(track_rev, wet_level) + np.multiply(dry_track_with_zeros, 1-wet_level)
+        tail_plus_track = tail + track
+        actual_tail = tail_plus_track[:, self.chunk_size:]
+        actual_chunk = tail_plus_track[:, :self.chunk_size]
+        actual_tail = np.concatenate([actual_tail, np.zeros((2, track_rev.shape[1] - actual_tail.shape[1]))], axis=1)
+        self.tail.put(actual_tail)
+        return actual_chunk
+        
     def get_callback(self):
         def callback(in_data, frame_count, time_info, status):
             track = self.empty_chunk.copy()
@@ -106,6 +118,7 @@ class AudioBuffer(threading.Thread):
             print("current_n_people", current_n_people)
             for i in range(current_n_people):
                 track += self.process_queue(i) # * (1/current_n_people)
+            track = self._apply_reverb(track, 0.2)
             actual_combinated_chunk = self._intercalate_channels(track)
             ret_data = actual_combinated_chunk.astype(np.float32).tobytes()
             return (ret_data, pyaudio.paContinue)
