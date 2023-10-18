@@ -85,8 +85,6 @@ while True:
                     # Get the boxes and track IDs
                     boxes = results[0].boxes.xywh.cpu()
                     audio_buffer.people_counter = min(len(boxes), max_n_people)
-                    if audio_buffer.people_counter == 0:
-                        audio_buffer.fading_out = True
                     if results[0].boxes.id is not None:
                         track_ids = results[0].boxes.id.int().cpu().tolist()
 

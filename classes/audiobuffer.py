@@ -19,18 +19,18 @@ class AudioBuffer:
         self.last_coords_queue3 = Queue()
         self.last_coords_queue4 = Queue()
         self.settings = settings
-        self.track1_data, self.track1_rate = librosa.load('audios/larga_duracion/Lluvias/lluvia 1.WAV', sr=96000, dtype=np.float64, mono=False)
-        self.track2_data, self.track2_rate = librosa.load('audios/larga_duracion/Lluvias/lluvia 2.WAV', sr=96000, dtype=np.float64, mono=False)
-        self.track3_data, self.track3_rate = librosa.load('audios/larga_duracion/Lluvias/lluvia 3.WAV', sr=96000, dtype=np.float64, mono=False)
-        self.track4_data, self.track4_rate = librosa.load('audios/larga_duracion/Lluvias/lluvia 4.WAV', sr=96000, dtype=np.float64, mono=False)
+        self.track1_data, self.track1_rate = librosa.load('audios/consolidado/LluviasConsolidado 2-lluvia 2.wav', sr=44.1e3, dtype=np.float64, mono=False)
+        self.track2_data, self.track2_rate = librosa.load('audios/consolidado/LluviasConsolidado 2-lluvia 2.wav', sr=44.1e3, dtype=np.float64, mono=False)
+        self.track3_data, self.track3_rate = librosa.load('audios/consolidado/LluviasConsolidado 3-lluvia 3.wav', sr=44.1e3, dtype=np.float64, mono=False)
+        self.track4_data, self.track4_rate = librosa.load('audios/consolidado/LluviasConsolidado 4-lluvia 4.wav', sr=44.1e3, dtype=np.float64, mono=False)
         print("self.track1_data.shape", self.track1_data.shape)
         # instantiate PyAudio (1)
         self.p = pyaudio.PyAudio()
         
-        self.first_IR, self.IR_rate = librosa.load('audios/IRs/314-Cathedral.wav', sr=44.1e3, dtype=np.float64, mono=False)
+        self.first_IR, self.IR_rate = librosa.load('audios/IRs/314-Cathedral-norm.wav', sr=44.1e3, dtype=np.float64, mono=False)
         print("self.first_IR.shape[1]", self.first_IR.shape[1])
         self.chunk_size = int(44100*0.5)
-        track1_frame = self.track1_data[:, 0:self.chunk_size]
+        track1_frame = self.track1_data[:,0 : self.chunk_size]
         track1 = ss.fftconvolve(track1_frame, self.first_IR, mode="full", axes=1)
         self.tail.put(np.zeros(track1.shape))
         self.last_coords_queue1.put((0, 0, 0, 0))
@@ -54,30 +54,6 @@ class AudioBuffer:
         self.stream3 = None
         self.stream4 = None
         self.main_stream = None
-        self.fading_out = False
-        self.fade_out_window = np.linspace(1,0,5 * self.chunk_size)
-        self.current_fade_out = 0
-
-
-    def _fade_out(self, frames_l, frames_r):
-        start = self.current_fade_out
-        end = self.current_fade_out + len(frames_l)
-        frames_l = np.multiply(frames_l, self.fade_out_window[start:end])
-        frames_r = np.multiply(frames_r, self.fade_out_window[start:end])
-        self.current_fade_out += len(frames_l)
-        if self.current_fade_out >= len(self.fade_out_window):
-            self.fading_out = False
-            self.current_fade_out = 0
-        return frames_l, frames_r
-
-    def _apply_stereo_panning(self, chunk, last_coords, current_coords):
-        ramp = np.linspace(last_coords[0], current_coords[0], chunk.shape[1])
-        chunk_l = np.multiply(chunk[0, :], 1-(1 / self.settings.x_screen_size) * ramp)
-        chunk_r = np.multiply(chunk[1, :], (1 / self.settings.x_screen_size) * ramp)
-        if self.fading_out:
-            chunk_l, chunk_r = self._fade_out(chunk_l, chunk_r)
-        return np.array((chunk_l, chunk_r))
-
 
     def process_queue(self, index):
         queue = self.queue_array[index]
@@ -94,12 +70,13 @@ class AudioBuffer:
             track = np.zeros((2, self.chunk_size))
             current_n_people = self.people_counter
             for i in range(current_n_people):
-                track += self.process_queue(i) * (1/current_n_people) 
+                track += self.process_queue(i) * (1/current_n_people)
             
             track_rev = ss.fftconvolve(track, self.first_IR, mode="full", axes=1)
-            track = track_rev * 0.8 + 0.2*np.concatenate([track, np.zeros((2, track_rev.shape[1] - track.shape[1]))], axis=1)
+            dry_signal = np.concatenate([track, np.zeros((2, track_rev.shape[1] - track.shape[1]))], axis=1)
+            track = np.multiply(track_rev, 0.1) + np.multiply(dry_signal, 0.9)
             
-            tail_plus_track = (1/2 * tail + 1/2 * track) * 5
+            tail_plus_track = tail + track
             actual_tail = tail_plus_track[:, self.chunk_size:]
             actual_chunk = tail_plus_track[:, :self.chunk_size]
             actual_combinated_chunk = np.zeros((2*self.chunk_size))
@@ -158,14 +135,13 @@ class AudioBuffer:
         sample_length = int(self.chunk_size//2)
         remaining_frames = np.zeros((2, sample_length))
         last_coords = (0, 0)
-        samples_phase =  int(sample_length//3*2)
+        samples_phase = int(sample_length//3*2)
         hop_length = int(sample_length - samples_phase)
         while self.buffer_alive:
-            if queue.qsize() < 2:
+            if queue.qsize() < 5:
                 print("queue_size: ", queue.qsize())
                 remaining_frames, last_coords = self._populate_chunk(queue, track, index, remaining_frames, last_coords, sample_length, samples_phase, hop_length)
-            time.sleep(0.1)
-
+            time.sleep(0.01)
 
     def _main_stream(self):
         self.stream.start_stream()
@@ -185,13 +161,14 @@ class AudioBuffer:
             else:
                 read_from = np.random.randint(0, bytes.shape[1] - sample_length)
                 sample = bytes[:, read_from:read_from + sample_length]
-                sample = self._pitch_shift_2d_sample(sample,  int(0 * (1-self.compute_velocity_from_entropy(index))))
-                sample = np.multiply(sample, hanning)
+                # sample = self._pitch_shift_2d_sample(sample,  int(0 * (1-self.compute_velocity_from_entropy(index))))
+                # sample = np.multiply(sample, hanning)
                 if (current_stack_length + sample_length <= self.chunk_size):
                     chunk[:, current_stack_length:current_stack_length + sample_length] += sample
                 else:
                     chunk[:, current_stack_length:] += sample[:, :self.chunk_size - current_stack_length]
                     remaining_frames[:, :sample_length - (self.chunk_size - current_stack_length)] += sample[:, self.chunk_size - current_stack_length:]
+                    
                 current_stack_length += hop_length
             samples_per_chunk += 1
                 
@@ -217,7 +194,12 @@ class AudioBuffer:
     def _intercalate_channels(self, chunk):
         return np.ravel(np.column_stack((chunk[0, :], chunk[1, :])))
 
-    
+    def _apply_stereo_panning(self, chunk, last_coords, current_coords):
+        ramp = np.linspace(last_coords[0], current_coords[0], chunk.shape[1])
+        chunk_l = np.multiply(chunk[1, :], (1 / self.settings.x_screen_size) * ramp)
+        chunk_r = np.multiply(chunk[0, :], 1-(1 / self.settings.x_screen_size) * ramp)
+        
+        return np.array((chunk_l, chunk_r))
 
     def _sum_distances(self, index):
         current = self.settings.coords[index]
