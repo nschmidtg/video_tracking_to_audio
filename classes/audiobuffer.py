@@ -54,6 +54,30 @@ class AudioBuffer:
         self.stream3 = None
         self.stream4 = None
         self.main_stream = None
+        self.fading_out = False
+        self.fade_out_window = np.linspace(1,0,5 * self.chunk_size)
+        self.current_fade_out = 0
+
+
+    def _fade_out(self, frames_l, frames_r):
+        start = self.current_fade_out
+        end = self.current_fade_out + len(frames_l)
+        frames_l = np.multiply(frames_l, self.fade_out_window[start:end])
+        frames_r = np.multiply(frames_r, self.fade_out_window[start:end])
+        self.current_fade_out += len(frames_l)
+        if self.current_fade_out >= len(self.fade_out_window):
+            self.fading_out = False
+            self.current_fade_out = 0
+        return frames_l, frames_r
+
+    def _apply_stereo_panning(self, chunk, last_coords, current_coords):
+        ramp = np.linspace(last_coords[0], current_coords[0], chunk.shape[1])
+        chunk_l = np.multiply(chunk[0, :], 1-(1 / self.settings.x_screen_size) * ramp)
+        chunk_r = np.multiply(chunk[1, :], (1 / self.settings.x_screen_size) * ramp)
+        if self.fading_out:
+            chunk_l, chunk_r = self._fade_out(chunk_l, chunk_r)
+        return np.array((chunk_l, chunk_r))
+
 
     def process_queue(self, index):
         queue = self.queue_array[index]
@@ -70,7 +94,7 @@ class AudioBuffer:
             track = np.zeros((2, self.chunk_size))
             current_n_people = self.people_counter
             for i in range(current_n_people):
-                track += self.process_queue(i) * (1/current_n_people)
+                track += self.process_queue(i) * (1/current_n_people) 
             
             track_rev = ss.fftconvolve(track, self.first_IR, mode="full", axes=1)
             track = track_rev * 0.8 + 0.2*np.concatenate([track, np.zeros((2, track_rev.shape[1] - track.shape[1]))], axis=1)
@@ -193,11 +217,7 @@ class AudioBuffer:
     def _intercalate_channels(self, chunk):
         return np.ravel(np.column_stack((chunk[0, :], chunk[1, :])))
 
-    def _apply_stereo_panning(self, chunk, last_coords, current_coords):
-        ramp = np.linspace(last_coords[0], current_coords[0], chunk.shape[1])
-        chunk_l = np.multiply(chunk[0, :], 1-(1 / self.settings.x_screen_size) * ramp)
-        chunk_r = np.multiply(chunk[1, :], (1 / self.settings.x_screen_size) * ramp)
-        return np.array((chunk_l, chunk_r))
+    
 
     def _sum_distances(self, index):
         current = self.settings.coords[index]
