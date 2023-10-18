@@ -40,16 +40,15 @@ while True:
         model = YOLO('model/yolov8n.pt')
 
         # Open the video file
-        video_path = "path/to/video.mp4"
-        cap = cv2.VideoCapture(0)
+        video_path = "audios/video.mp4"
+        cap = cv2.VideoCapture(video_path)
 
         # Store the track history
         track_history = defaultdict(lambda: [])
-        max_n_people = 2
+        max_n_people = 4
 
         success, frame = cap.read()
         if success:
-            print("frame shapee", frame.shape)
             screen_height = frame.shape[0]
             scren_width = frame.shape[1]
             settings = Settings(

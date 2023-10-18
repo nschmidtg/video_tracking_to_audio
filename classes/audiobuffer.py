@@ -9,7 +9,13 @@ import threading
 from .settings import Settings
 import math
 
-
+class Stream:
+    def __init__(self, path):
+        self.track_data, self.track_rate = librosa.load(path, sr=44.1e3, dtype=np.float64, mono=False)
+        self.last_coords_queue = Queue()
+        self.last_coords_queue.put((0, 0, 0, 0))
+        self.queue = Queue()
+        self.stream = None
 
 class AudioBuffer:
     def __init__(self, settings):
@@ -23,13 +29,11 @@ class AudioBuffer:
         self.track2_data, self.track2_rate = librosa.load('audios/consolidado/LluviasConsolidado 2-lluvia 2.wav', sr=44.1e3, dtype=np.float64, mono=False)
         self.track3_data, self.track3_rate = librosa.load('audios/consolidado/LluviasConsolidado 3-lluvia 3.wav', sr=44.1e3, dtype=np.float64, mono=False)
         self.track4_data, self.track4_rate = librosa.load('audios/consolidado/LluviasConsolidado 4-lluvia 4.wav', sr=44.1e3, dtype=np.float64, mono=False)
-        print("self.track1_data.shape", self.track1_data.shape)
         # instantiate PyAudio (1)
         self.p = pyaudio.PyAudio()
         
         self.first_IR, self.IR_rate = librosa.load('audios/IRs/314-Cathedral-norm.wav', sr=44.1e3, dtype=np.float64, mono=False)
-        print("self.first_IR.shape[1]", self.first_IR.shape[1])
-        self.chunk_size = int(44100*0.5)
+        self.chunk_size = int(44100*5)
         track1_frame = self.track1_data[:,0 : self.chunk_size]
         track1 = ss.fftconvolve(track1_frame, self.first_IR, mode="full", axes=1)
         self.tail.put(np.zeros(track1.shape))
@@ -69,12 +73,13 @@ class AudioBuffer:
             tail = self.tail.get()
             track = np.zeros((2, self.chunk_size))
             current_n_people = self.people_counter
+            print("current_n_people", current_n_people)
             for i in range(current_n_people):
-                track += self.process_queue(i) * (1/current_n_people)
+                track += self.process_queue(i) # * (1/current_n_people)
             
             track_rev = ss.fftconvolve(track, self.first_IR, mode="full", axes=1)
             dry_signal = np.concatenate([track, np.zeros((2, track_rev.shape[1] - track.shape[1]))], axis=1)
-            track = np.multiply(track_rev, 0.1) + np.multiply(dry_signal, 0.9)
+            track = np.multiply(track_rev, 0.05) + np.multiply(dry_signal, 0.95)
             
             tail_plus_track = tail + track
             actual_tail = tail_plus_track[:, self.chunk_size:]
@@ -139,7 +144,6 @@ class AudioBuffer:
         hop_length = int(sample_length - samples_phase)
         while self.buffer_alive:
             if queue.qsize() < 5:
-                print("queue_size: ", queue.qsize())
                 remaining_frames, last_coords = self._populate_chunk(queue, track, index, remaining_frames, last_coords, sample_length, samples_phase, hop_length)
             time.sleep(0.01)
 
