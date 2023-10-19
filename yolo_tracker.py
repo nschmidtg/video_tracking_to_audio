@@ -45,7 +45,7 @@ while True:
 
         # Store the track history
         track_history = defaultdict(lambda: [])
-        max_n_people = 8
+        max_n_people = 9
 
         success, frame = cap.read()
         if success:
