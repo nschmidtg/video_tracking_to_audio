@@ -34,7 +34,7 @@ while True:
 
         # Open the video file
         video_path = "audios/video.mp4"
-        cap = cv2.VideoCapture(video_path)
+        cap = cv2.VideoCapture(0)
         max_n_people = 10
 
         success, frame = cap.read()
@@ -71,10 +71,7 @@ while True:
                     if results[0].boxes.id is not None:
                         track_ids = results[0].boxes.id.int().cpu().tolist()
 
-                        
-
                         # assign people counter and coords
-                        
                         list_a = {value:boxes[count] for count, value in enumerate(track_ids)}
                         sorted_list = collections.OrderedDict(sorted(list_a.items()))
                         people_counter = 0

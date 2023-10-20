@@ -27,19 +27,55 @@ class Control:
     
     def get_position_for_coordinate(self, index, chunk_size):
         current_value = self.queue.get() if self.queue.qsize() > 0 else self.last_value
-        
         current_coordinate = current_value[index]
         last_coordinate = self.last_value[index]
-        print(current_value)
         array = np.linspace(last_coordinate, current_coordinate, chunk_size)
         self.last_value = current_value
         return array
+
+
+class RampHandler():
+    def __init__(self, ramp_length):
+        self.ramp_length = ramp_length
+        self.ramp_up = np.linspace(0, 1, self.ramp_length)
+        self.ramp_down = np.linspace(1, 0, self.ramp_length)
+        self.current_y_value = 1
+        self.current_fading = 'none'
+
+    def get_next_fade(self, chunk_size, fading):
+        ramp = np.zeros(chunk_size)
+        if fading == 'in':
+            current_x_position = int(self.current_y_value * self.ramp_length)
+            if current_x_position + chunk_size > self.ramp_length:
+                ramp = np.concatenate([self.ramp_up[current_x_position:], np.ones(chunk_size - (self.ramp_length - current_x_position))], axis=0)
+                self.current_fading = 'none'
+            else:
+                ramp = self.ramp_up[current_x_position:current_x_position + chunk_size]
+            self.current_y_value = ramp[-1]
+        elif fading == 'out':
+            current_x_position = int((1 - self.current_y_value) * self.ramp_length)
+            if current_x_position + chunk_size > self.ramp_length:
+                ramp = np.concatenate([self.ramp_down[current_x_position:], np.zeros(chunk_size - (self.ramp_length - current_x_position))], axis=0)
+                self.current_fading = 'none'
+            else:
+                ramp = self.ramp_down[current_x_position:current_x_position + chunk_size]
+            self.current_y_value = ramp[-1]
+        elif fading == 'playing':
+            ramp = np.ones(chunk_size)
+        elif fading == 'none':
+            ramp = np.zeros(chunk_size)
+            
+        self.current_fading = fading
+        self.current_y_value = ramp[-1]
+            
+        return ramp 
 
 
 class Stream(threading.Thread):
     def __init__(self, path, chunk_size, screen_width, screen_height, linear=False):
         self.track_data, self.track_rate = librosa.load(path, sr=44.1e3, dtype=np.float64, mono=False)
         self.last_coords_queue = Queue()
+        
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.last_coords_queue.put((0, 0, 0, 0))
@@ -47,6 +83,7 @@ class Stream(threading.Thread):
         self.queue = Queue()
         self.buffer_alive = True
         self.chunk_size = chunk_size
+        self.ramp_handler = RampHandler(self.chunk_size * 50)
         self.empty_chunk = np.zeros((2, chunk_size))
         self.sample_length = int(chunk_size//10)
         self.hop_length = int(self.sample_length//10)
@@ -63,10 +100,9 @@ class Stream(threading.Thread):
         
     def run(self):
         remaining_frames = np.zeros((2, self.sample_length))
-        last_coords = (0, 0)
         self.reset_random()
         while self.buffer_alive:
-            if self.queue.qsize() < 100:
+            if self.queue.qsize() < 5:
                 remaining_frames = self.populate_function(remaining_frames)
             else:
                 time.sleep(0.005)
@@ -91,6 +127,8 @@ class Stream(threading.Thread):
                     
                 current_stack_length += self.hop_length
             samples_per_chunk += 1
+            
+        chunk = self._apply_stereo_panning(chunk)
 
         self.queue.put(chunk)
         return remaining_frames
@@ -105,7 +143,6 @@ class Stream(threading.Thread):
             if current_stack_length == 0 and np.any(remaining_frames):
                 chunk[:, :remaining_frames.shape[1]] += remaining_frames
                 remaining_frames = np.zeros((2, self.sample_length))
-                print("here")
             else:
                 sample = self.track_data[:, read_from:read_from + self.sample_length]
                 if (current_stack_length + self.sample_length <= self.chunk_size):
@@ -189,9 +226,16 @@ class AudioBuffer(threading.Thread):
         def callback(in_data, frame_count, time_info, status):
             track = self.empty_chunk.copy()
             current_n_people = self.people_counter
-            print("current_n_people", current_n_people)
-            for i in range(current_n_people):
-                track += self.process_queue(i) # * (1/current_n_people)
+            for i in range(self.max_n_people):
+                current_stream = self.stream_array[i]
+                fading = current_stream.ramp_handler.current_fading
+                if i < current_n_people:
+                    if current_stream.ramp_handler.current_fading != 'playing':
+                        fading = 'in'
+                else:
+                    if current_stream.ramp_handler.current_fading != 'none':
+                        fading = 'out'
+                track += self.process_queue(i) * self.stream_array[i].ramp_handler.get_next_fade(self.chunk_size, fading)
             track = self._apply_reverb(track, 0.4)
             actual_combinated_chunk = self._intercalate_channels2(track)
             ret_data = actual_combinated_chunk.astype(np.float32).tobytes()
@@ -224,13 +268,6 @@ class AudioBuffer(threading.Thread):
         to_be_populated[::2] = chunk[0, :]
         to_be_populated[1::2] = chunk[1, :]
         return to_be_populated
-
-    def _apply_stereo_panning(self, chunk, last_coords, current_coords):
-        ramp = np.linspace(last_coords[0], current_coords[0], chunk.shape[1])
-        chunk_l = np.multiply(chunk[1, :], (1 / self.screen_width) * ramp)
-        chunk_r = np.multiply(chunk[0, :], 1-(1 / self.screen_width) * ramp)
-        
-        return np.array((chunk_l, chunk_r))
 
     def _sum_distances(self, index):
         current = self.settings.coords[index]
