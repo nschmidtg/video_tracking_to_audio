@@ -46,49 +46,48 @@ class RampHandler():
         ramp = np.zeros(chunk_size)
         if fading == 'in':
             current_x_position = int(self.current_y_value * self.ramp_length)
-            if current_x_position + chunk_size > self.ramp_length:
+            if current_x_position + chunk_size >= self.ramp_length:
                 ramp = np.concatenate([self.ramp_up[current_x_position:], np.ones(chunk_size - (self.ramp_length - current_x_position))], axis=0)
-                self.current_fading = 'none'
+                self.current_fading = 'playing'
             else:
                 ramp = self.ramp_up[current_x_position:current_x_position + chunk_size]
+                self.current_fading = 'in'
             self.current_y_value = ramp[-1]
         elif fading == 'out':
             current_x_position = int((1 - self.current_y_value) * self.ramp_length)
-            if current_x_position + chunk_size > self.ramp_length:
+            if current_x_position + chunk_size >= self.ramp_length:
                 ramp = np.concatenate([self.ramp_down[current_x_position:], np.zeros(chunk_size - (self.ramp_length - current_x_position))], axis=0)
                 self.current_fading = 'none'
             else:
                 ramp = self.ramp_down[current_x_position:current_x_position + chunk_size]
+                self.current_fading = 'out'
             self.current_y_value = ramp[-1]
         elif fading == 'playing':
             ramp = np.ones(chunk_size)
         elif fading == 'none':
             ramp = np.zeros(chunk_size)
             
-        self.current_fading = fading
         self.current_y_value = ramp[-1]
             
-        return ramp 
+        return ramp
 
 
 class Stream(threading.Thread):
     def __init__(self, path, chunk_size, screen_width, screen_height, linear=False):
         self.track_data, self.track_rate = librosa.load(path, sr=44.1e3, dtype=np.float64, mono=False)
-        self.last_coords_queue = Queue()
-        
         self.screen_width = screen_width
         self.screen_height = screen_height
-        self.last_coords_queue.put((0, 0, 0, 0))
         self.coordinates = Control(screen_width, screen_height)
         self.queue = Queue()
         self.buffer_alive = True
         self.chunk_size = chunk_size
         self.ramp_handler = RampHandler(self.chunk_size * 250)
         self.empty_chunk = np.zeros((2, chunk_size))
-        self.sample_length = int(chunk_size//10)
+        self.sample_length = int(chunk_size//2)
         self.hop_length = int(self.sample_length//10)
         self.populate_function = self._populate_linear_chunk if linear else self._populate_random_chunk
         self.read_from = 0
+        self.ramp_last_value = self.screen_width//2
         threading.Thread.__init__(self)
         
     def join(self):
@@ -160,9 +159,15 @@ class Stream(threading.Thread):
         return remaining_frames
     
     def _apply_stereo_panning(self, chunk):
-        ramp = self.coordinates.get_position_for_coordinate(0, chunk.shape[1])
-        chunk_l = np.multiply(chunk[1, :], (1 / self.screen_width) * ramp)
-        chunk_r = np.multiply(chunk[0, :], 1-(1 / self.screen_width) * ramp)
+        print(self.ramp_handler.current_fading, self.ramp_last_value)
+        if self.ramp_handler.current_fading == 'playing':
+            ramp = self.coordinates.get_position_for_coordinate(0, chunk.shape[1])
+            chunk_l = np.multiply(chunk[1, :], (1 / self.screen_width) * ramp)
+            chunk_r = np.multiply(chunk[0, :], 1-(1 / self.screen_width) * ramp)
+            self.ramp_last_value = ramp[-1]
+        else:
+            chunk_l = np.multiply(chunk[1, :], (1 / self.screen_width) * self.ramp_last_value)
+            chunk_r = np.multiply(chunk[0, :], 1-(1 / self.screen_width) * self.ramp_last_value)
         
         return np.array((chunk_l, chunk_r))
 
@@ -174,16 +179,20 @@ class AudioBuffer(threading.Thread):
         self.max_n_people = max_n_people
         self.stream_array = []
         self.chunk_size = int(1100)
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado.wav', self.chunk_size, screen_width, screen_height, linear=True))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 1-lluvia 1.wav', self.chunk_size, screen_width, screen_height))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 2-lluvia 2.wav', self.chunk_size, screen_width, screen_height))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 3-lluvia 3.wav', self.chunk_size, screen_width, screen_height))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 4-lluvia 4.wav', self.chunk_size, screen_width, screen_height))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado.wav', self.chunk_size, screen_width, screen_height, linear=True))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 5-lluvia bajo lona.wav', self.chunk_size, screen_width, screen_height))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 6-lluvia bosque.wav', self.chunk_size, screen_width, screen_height))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 7-lluvia dentro de furgon.wav', self.chunk_size, screen_width, screen_height))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 8-lluvia dentro del furgon.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/consolidado/base1.wav', self.chunk_size, screen_width, screen_height, linear=True))
+        self.stream_array.append(Stream('audios/consolidado/base2.wav', self.chunk_size, screen_width, screen_height, linear=True))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm A.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm A-1.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm A-2.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm C.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm C-1.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm C-2.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm E.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm E-1.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm E-2.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm G.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm G-1.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm G-2.wav', self.chunk_size, screen_width, screen_height))
         
 
         self.p = pyaudio.PyAudio()
@@ -210,7 +219,7 @@ class AudioBuffer(threading.Thread):
         # frames = frames * self.compute_velocity_from_entropy(index)
         return frames
     
-    def _apply_reverb(self, chunk, wet_level=0.3):
+    def _apply_reverb(self, chunk, wet_level=0.2):
         track_rev = ss.fftconvolve(chunk, self.first_IR, mode="full", axes=1)
         dry_track_with_zeros = np.concatenate([chunk, np.zeros((2, track_rev.shape[1] - chunk.shape[1]))], axis=1)
         tail = self.tail.get()
