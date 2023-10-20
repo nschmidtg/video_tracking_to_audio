@@ -83,7 +83,7 @@ class Stream(threading.Thread):
         self.queue = Queue()
         self.buffer_alive = True
         self.chunk_size = chunk_size
-        self.ramp_handler = RampHandler(self.chunk_size * 50)
+        self.ramp_handler = RampHandler(self.chunk_size * 250)
         self.empty_chunk = np.zeros((2, chunk_size))
         self.sample_length = int(chunk_size//10)
         self.hop_length = int(self.sample_length//10)
