@@ -1,15 +1,8 @@
 from collections import defaultdict
 from classes.audiobuffer import AudioBuffer
-from classes.settings import Settings
-import operator
 import PySimpleGUI as sg
-import sys
-import pdb
 import collections
-import time
-
 import cv2
-import numpy as np
 
 from ultralytics import YOLO
 
@@ -37,27 +30,18 @@ while True:
     if event == "START":
 
         # Load the YOLOv8 model
-        model = YOLO('model/yolov8n.pt')
+        model = YOLO('model/yolov8n.pt') # yolov8n.pt, yolov8n-pose, yolov8n-seg
 
         # Open the video file
         video_path = "audios/video.mp4"
         cap = cv2.VideoCapture(video_path)
-
-        # Store the track history
-        track_history = defaultdict(lambda: [])
-        max_n_people = 9
+        max_n_people = 10
 
         success, frame = cap.read()
         if success:
             screen_height = frame.shape[0]
             scren_width = frame.shape[1]
-            settings = Settings(
-                scren_width,
-                screen_height,
-                max_n_people
-            )
-            
-            audio_buffer = AudioBuffer(settings)
+            audio_buffer = AudioBuffer(scren_width, screen_height, max_n_people)
             audio_buffer.start()
 
             # Loop through the video frames
@@ -69,15 +53,16 @@ while True:
                     # Run YOLOv8 tracking on the frame, persisting tracks between frames
                     results = model.track(
                         frame,
-                        tracker="botsort.yaml",
-                        conf=0.2,
+                        tracker="botsort.yaml", # bytetrack.yaml
+                        conf=0.4,
                         half=False,
                         show=False,
                         save=False,
-                        max_det=max_n_people,
-                        vid_stride=False,
+                        max_det=10,
                         classes=0,
                         verbose=False,
+                        persist=True,
+                        device="cpu", # cpu cuda
                     )
 
                     # Get the boxes and track IDs
@@ -96,7 +81,7 @@ while True:
                         for box in sorted_list.values():
                             if people_counter >= max_n_people:
                                 break
-                            settings.coords[people_counter] = box
+                            audio_buffer.stream_array[people_counter].coordinates.add_value(box)
                             people_counter += 1
 
                     # Visualize the results on the frame

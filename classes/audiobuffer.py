@@ -8,11 +8,42 @@ import threading
 import math
 
 
+class Control:
+    def __init__(self, screen_width, screen_height):
+        self.last_value = (0, 0, 0, 0)
+        self.queue = Queue(1)
+        self.screen_width = screen_width
+        
+    def add_value(self, value):
+        if self.queue.qsize() > 0:
+            self.queue.get()
+        self.queue.put(value)
+            
+    def interpolate_for_chunk(self, last_value, current_value, chunk_size):
+        current_value = self.queue.get() if self.queue.qsize() > 0 else self.last_value
+        array = np.linspace(self.last_value, current_value, chunk_size)
+        self.last_value = current_value
+        return array
+    
+    def get_position_for_coordinate(self, index, chunk_size):
+        current_value = self.queue.get() if self.queue.qsize() > 0 else self.last_value
+        
+        current_coordinate = current_value[index]
+        last_coordinate = self.last_value[index]
+        print(current_value)
+        array = np.linspace(last_coordinate, current_coordinate, chunk_size)
+        self.last_value = current_value
+        return array
+
+
 class Stream(threading.Thread):
-    def __init__(self, path, chunk_size, linear=False):
+    def __init__(self, path, chunk_size, screen_width, screen_height, linear=False):
         self.track_data, self.track_rate = librosa.load(path, sr=44.1e3, dtype=np.float64, mono=False)
         self.last_coords_queue = Queue()
+        self.screen_width = screen_width
+        self.screen_height = screen_height
         self.last_coords_queue.put((0, 0, 0, 0))
+        self.coordinates = Control(screen_width, screen_height)
         self.queue = Queue()
         self.buffer_alive = True
         self.chunk_size = chunk_size
@@ -36,13 +67,12 @@ class Stream(threading.Thread):
         self.reset_random()
         while self.buffer_alive:
             if self.queue.qsize() < 100:
-                remaining_frames, last_coords = self.populate_function(remaining_frames, last_coords)
+                remaining_frames = self.populate_function(remaining_frames)
             else:
                 time.sleep(0.005)
                 
-    def _populate_random_chunk(self, remaining_frames, last_coords):        
+    def _populate_random_chunk(self, remaining_frames):        
         samples_per_chunk = 0
-        current_coords = (0, 0, 0, 0) # self.settings.coords[index]
         current_stack_length = 0
         chunk = self.empty_chunk.copy()
         
@@ -63,10 +93,9 @@ class Stream(threading.Thread):
             samples_per_chunk += 1
 
         self.queue.put(chunk)
-        return remaining_frames, current_coords
+        return remaining_frames
     
-    def _populate_linear_chunk(self, remaining_frames, last_coords):        
-        current_coords = (0, 0, 0, 0) # self.settings.coords[index]
+    def _populate_linear_chunk(self, remaining_frames):        
         current_stack_length = 0
         chunk = self.empty_chunk.copy()
         if self.read_from + self.chunk_size > self.track_data.shape[1]:
@@ -88,26 +117,36 @@ class Stream(threading.Thread):
                 current_stack_length += self.sample_length
                 read_from += self.sample_length
 
+        chunk = self._apply_stereo_panning(chunk)
         self.queue.put(chunk)
         self.read_from = read_from
-        return remaining_frames, current_coords
+        return remaining_frames
+    
+    def _apply_stereo_panning(self, chunk):
+        ramp = self.coordinates.get_position_for_coordinate(0, chunk.shape[1])
+        chunk_l = np.multiply(chunk[1, :], (1 / self.screen_width) * ramp)
+        chunk_r = np.multiply(chunk[0, :], 1-(1 / self.screen_width) * ramp)
+        
+        return np.array((chunk_l, chunk_r))
 
 class AudioBuffer(threading.Thread):
-    def __init__(self, settings):
+    def __init__(self, screen_width, screen_height, max_n_people):
         self.tail = Queue()
-        self.settings = settings
+        self.screen_width = screen_width
+        self.screen_height = screen_height
+        self.max_n_people = max_n_people
         self.stream_array = []
         self.chunk_size = int(1100)
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado.wav', self.chunk_size, linear=True))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 1-lluvia 1.wav', self.chunk_size))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 2-lluvia 2.wav', self.chunk_size))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 3-lluvia 3.wav', self.chunk_size))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 4-lluvia 4.wav', self.chunk_size))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado.wav', self.chunk_size, linear=True))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 5-lluvia bajo lona.wav', self.chunk_size))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 6-lluvia bosque.wav', self.chunk_size))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 7-lluvia dentro de furgon.wav', self.chunk_size))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 8-lluvia dentro del furgon.wav', self.chunk_size))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado.wav', self.chunk_size, screen_width, screen_height, linear=True))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 1-lluvia 1.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 2-lluvia 2.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 3-lluvia 3.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 4-lluvia 4.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado.wav', self.chunk_size, screen_width, screen_height, linear=True))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 5-lluvia bajo lona.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 6-lluvia bosque.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 7-lluvia dentro de furgon.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidado 8-lluvia dentro del furgon.wav', self.chunk_size, screen_width, screen_height))
         
 
         self.p = pyaudio.PyAudio()
@@ -131,8 +170,7 @@ class AudioBuffer(threading.Thread):
     def process_queue(self, index):
         queue = self.stream_array[index].queue
         frames = queue.get()
-        frames = frames * self.compute_velocity_from_entropy(index)
-        self.stream_array[index].last_coords_queue.put(self.settings.coords[index])
+        # frames = frames * self.compute_velocity_from_entropy(index)
         return frames
     
     def _apply_reverb(self, chunk, wet_level=0.3):
@@ -161,7 +199,7 @@ class AudioBuffer(threading.Thread):
         return callback
     
     def start(self):
-        for i in range(self.settings.max_people_counter):
+        for i in range(self.max_n_people):
             stream = self.stream_array[i]
             stream.start()
         super().start()
@@ -170,7 +208,7 @@ class AudioBuffer(threading.Thread):
         self.stream.start_stream()
         
     def join(self):
-        for i in range(self.settings.max_people_counter):
+        for i in range(self.max_n_people):
             stream = self.stream_array[i]
             stream.join()
         self.stream.stop_stream()
@@ -189,8 +227,8 @@ class AudioBuffer(threading.Thread):
 
     def _apply_stereo_panning(self, chunk, last_coords, current_coords):
         ramp = np.linspace(last_coords[0], current_coords[0], chunk.shape[1])
-        chunk_l = np.multiply(chunk[1, :], (1 / self.settings.x_screen_size) * ramp)
-        chunk_r = np.multiply(chunk[0, :], 1-(1 / self.settings.x_screen_size) * ramp)
+        chunk_l = np.multiply(chunk[1, :], (1 / self.screen_width) * ramp)
+        chunk_r = np.multiply(chunk[0, :], 1-(1 / self.screen_width) * ramp)
         
         return np.array((chunk_l, chunk_r))
 
@@ -203,8 +241,8 @@ class AudioBuffer(threading.Thread):
             
     def compute_velocity_from_entropy(self, index):
         value = 0.3
-        if self.settings.people_counter > 1:
-            max_value = self.calculate_distance((0, 0), (self.settings.x_screen_size, self.settings.y_screen_size)) * (self.settings.people_counter - 1)
+        if self.people_counter > 1:
+            max_value = self.calculate_distance((0, 0), (self.screen_width, self.screen_height)) * (self.settings.people_counter - 1)
             value = math.pow(1 - (self._sum_distances(index) / max_value), 3)
         return value
 
