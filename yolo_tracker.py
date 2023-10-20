@@ -74,15 +74,13 @@ while True:
                         # assign people counter and coords
                         list_a = {value:boxes[count] for count, value in enumerate(track_ids)}
                         
+                        sorted_list = collections.OrderedDict(sorted(list_a.items()))
                         people_counter = 0
-                        for index, box in list_a:
+                        for box in sorted_list.values():
                             if people_counter >= max_n_people:
                                 break
                             audio_buffer.stream_array[people_counter].coordinates.add_value(box)
                             people_counter += 1
-                            
-                        present_ids = list_a.keys()
-                        # absent_ids = set(audio_buffer.track_ids).difference(present_ids)
 
                     # Visualize the results on the frame
                     annotated_frame = results[0].plot()
