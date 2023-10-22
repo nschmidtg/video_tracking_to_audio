@@ -34,8 +34,8 @@ while True:
 
         # Open the video file
         video_path = "audios/video.mp4"
-        cap = cv2.VideoCapture(0)
-        max_n_people = 1
+        cap = cv2.VideoCapture(video_path)
+        max_n_people = 14
 
         success, frame = cap.read()
         if success:
@@ -54,7 +54,7 @@ while True:
                     results = model.track(
                         frame,
                         tracker="botsort.yaml", # bytetrack.yaml
-                        conf=0.4,
+                        conf=0.3,
                         half=False,
                         show=False,
                         save=False,
@@ -62,7 +62,7 @@ while True:
                         classes=0,
                         verbose=False,
                         persist=True,
-                        device="cpu", # cpu cuda
+                        device="mps", # cpu cuda mps
                     )
 
                     # Get the boxes and track IDs
@@ -72,7 +72,7 @@ while True:
                         track_ids = results[0].boxes.id.int().cpu().tolist()
 
                         # assign people counter and coords
-                        list_a = {value:boxes[count] for count, value in enumerate(track_ids)}
+                        list_a = {value: boxes[count] for count, value in enumerate(track_ids)}
                         
                         sorted_list = collections.OrderedDict(sorted(list_a.items()))
                         people_counter = 0

@@ -27,7 +27,9 @@ class Control:
             current_value = self.last_value
         current_coordinate = current_value[0]
         last_coordinate = self.last_value[0]
-        print(0, current_coordinate, last_coordinate, width)
+        max_jump = int(width/14)
+        if np.abs(current_coordinate - last_coordinate) > max_jump:
+            current_coordinate = last_coordinate + np.sign(current_coordinate - last_coordinate) * max_jump
         array = np.linspace(last_coordinate, current_coordinate, chunk_size)
         self.last_value = [current_coordinate, current_value[1], current_value[2], current_value[3]]
         return array
@@ -72,18 +74,21 @@ class RampHandler():
 
 
 class Stream(threading.Thread):
-    def __init__(self, path, chunk_size, screen_width, screen_height, linear=False):
-        self.track_data, self.track_rate = librosa.load(path, sr=44.1e3, dtype=np.float64, mono=False)
+    def __init__(self, path, chunk_size, screen_width, screen_height, linear=False, static_ambient=False):
+        self.static_ambient = static_ambient
+        self.track_data, self.track_rate = librosa.load(path, sr=44.1e3, dtype=np.float64, mono=False, duration=20)
         self.screen_width = screen_width
         self.screen_height = screen_height
         self.coordinates = Control()
         self.queue = Queue()
         self.buffer_alive = True
         self.chunk_size = chunk_size
-        self.ramp_handler = RampHandler(self.chunk_size * 250)
+        self.ramp_handler = RampHandler(self.chunk_size * 175)
         self.empty_chunk = np.zeros((2, chunk_size))
         self.sample_length = int(chunk_size//2)
         self.hop_length = int(self.sample_length//10)
+        self.fade_in = np.linspace(0, 1, self.hop_length)
+        self.fade_out = np.linspace(1, 0, self.hop_length)
         self.populate_function = self._populate_linear_chunk if linear else self._populate_random_chunk
         self.read_from = 0
         self.ramp_last_value = self.screen_width//2
@@ -117,6 +122,9 @@ class Stream(threading.Thread):
             else:
                 read_from = np.random.randint(0, self.track_data.shape[1] - self.sample_length)
                 sample = self.track_data[:, read_from:read_from + self.sample_length]
+                # add a little fade in and out to avoid clicks
+                sample[:, :self.hop_length] *= self.fade_in
+                sample[:, -self.hop_length:] *= self.fade_out
                 if (current_stack_length + self.sample_length <= self.chunk_size):
                     chunk[:, current_stack_length:current_stack_length + self.sample_length] += sample
                 else:
@@ -152,13 +160,11 @@ class Stream(threading.Thread):
                 current_stack_length += self.sample_length
                 read_from += self.sample_length
 
-        chunk = self._apply_stereo_panning(chunk)
         self.queue.put(chunk)
         self.read_from = read_from
         return remaining_frames
     
     def _apply_stereo_panning(self, chunk):
-        print(self.ramp_handler.current_fading, self.coordinates.last_value)
         if self.ramp_handler.current_fading == 'playing' or self.ramp_handler.current_fading == 'in':
             ramp = self.coordinates.get_position_for_coordinate(chunk.shape[1], self.screen_width)
             chunk_r = np.multiply(chunk[1, :], (1 / self.screen_width) * ramp)
@@ -179,7 +185,8 @@ class AudioBuffer(threading.Thread):
         self.max_n_people = max_n_people
         self.stream_array = []
         self.chunk_size = int(1100)
-        self.stream_array.append(Stream('audios/consolidado/base1.wav', self.chunk_size, screen_width, screen_height, linear=True))
+        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm A.wav', self.chunk_size, screen_width, screen_height, linear=True))
+        self.stream_array.append(Stream('audios/consolidado/base1.wav', self.chunk_size, screen_width, screen_height, linear=True, static_ambient=True))
         self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm A.wav', self.chunk_size, screen_width, screen_height))
         self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm A-1.wav', self.chunk_size, screen_width, screen_height))
         self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm A-2.wav', self.chunk_size, screen_width, screen_height))
@@ -196,7 +203,7 @@ class AudioBuffer(threading.Thread):
         
 
         self.p = pyaudio.PyAudio()
-        self.first_IR, self.IR_rate = librosa.load('audios/IRs/208-R1_LargeRoom.wav', sr=44.1e3, dtype=np.float64, mono=False)
+        self.first_IR, self.IR_rate = librosa.load('audios/IRs/301-LargeHall.wav', sr=44.1e3, dtype=np.float64, mono=False)
         track1_frame = self.stream_array[0].track_data[:,0 : self.chunk_size]
         track1 = ss.fftconvolve(track1_frame, self.first_IR, mode="full", axes=1)
         self.tail.put(np.zeros(track1.shape))
@@ -215,7 +222,8 @@ class AudioBuffer(threading.Thread):
 
     def process_queue(self, stream, fading):
         frames = stream.queue.get()
-        frames = frames * stream.ramp_handler.get_next_fade(self.chunk_size, fading)
+        if stream.static_ambient is False:
+            frames = frames * stream.ramp_handler.get_next_fade(self.chunk_size, fading) * self.compute_velocity_from_entropy()
         return frames
     
     def _apply_reverb(self, chunk, wet_level=0.2):
@@ -244,8 +252,7 @@ class AudioBuffer(threading.Thread):
                     if current_stream.ramp_handler.current_fading != 'none':
                         fading = 'out'
                 track += self.process_queue(current_stream, fading)
-            track = track * self.compute_velocity_from_entropy()
-            track = self._apply_reverb(track, 0.4)
+            track = self._apply_reverb(track, 0.5)
             actual_combinated_chunk = self._intercalate_channels2(track)
             ret_data = actual_combinated_chunk.astype(np.float32).tobytes()
             return (ret_data, pyaudio.paContinue)
@@ -287,10 +294,17 @@ class AudioBuffer(threading.Thread):
             
     def compute_velocity_from_entropy(self):
         value = 0.3
+        playing = 0
+        for stream in self.stream_array:
+            if stream.ramp_handler.current_fading != 'none':
+                playing += 1
+        return max((playing / self.max_n_people + value), 1)
+                
+                
         # if self.people_counter > 1:
         #     max_value = self.calculate_distance((0, 0), (self.screen_width, self.screen_height)) * (self.people_counter - 1)
         #     value = math.pow(1 - (self._sum_distances(index) / max_value), 3)
-        return value
+        # return value
 
     def calculate_distance(self, A, B):
         return math.sqrt(pow((A[0] - B[0]), 2) + pow((A[1] - B[1]), 2))
