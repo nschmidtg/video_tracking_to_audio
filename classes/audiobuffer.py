@@ -83,7 +83,7 @@ class Stream(threading.Thread):
         self.queue = Queue()
         self.buffer_alive = True
         self.chunk_size = chunk_size
-        self.ramp_handler = RampHandler(self.chunk_size * 175)
+        self.ramp_handler = RampHandler(self.chunk_size * 100)
         self.empty_chunk = np.zeros((2, chunk_size))
         self.sample_length = int(chunk_size//2)
         self.hop_length = int(self.sample_length//10)
@@ -92,6 +92,7 @@ class Stream(threading.Thread):
         self.populate_function = self._populate_linear_chunk if linear else self._populate_random_chunk
         self.read_from = 0
         self.ramp_last_value = self.screen_width//2
+        self.random = np.random.RandomState(0)
         threading.Thread.__init__(self)
         
     def join(self):
@@ -99,7 +100,7 @@ class Stream(threading.Thread):
         super().join()
         
     def reset_random(self):
-        self.read_from = np.random.randint(0, self.track_data.shape[1] - self.chunk_size)
+        self.read_from = self.random.randint(0, self.track_data.shape[1] - self.chunk_size)
         
     def run(self):
         remaining_frames = np.zeros((2, self.sample_length))
@@ -120,7 +121,7 @@ class Stream(threading.Thread):
                 chunk[:, :remaining_frames.shape[1]] += remaining_frames
                 remaining_frames = np.zeros((2, self.sample_length))
             else:
-                read_from = np.random.randint(0, self.track_data.shape[1] - self.sample_length)
+                read_from = self.random.randint(0, self.track_data.shape[1] - self.sample_length)
                 sample = self.track_data[:, read_from:read_from + self.sample_length]
                 # add a little fade in and out to avoid clicks
                 sample[:, :self.hop_length] *= self.fade_in
@@ -185,23 +186,21 @@ class AudioBuffer(threading.Thread):
         self.max_n_people = max_n_people
         self.stream_array = []
         self.chunk_size = int(1100)
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm A.wav', self.chunk_size, screen_width, screen_height, linear=True))
-        self.stream_array.append(Stream('audios/consolidado/base1.wav', self.chunk_size, screen_width, screen_height, linear=True, static_ambient=True))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm A.wav', self.chunk_size, screen_width, screen_height))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm A-1.wav', self.chunk_size, screen_width, screen_height))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm A-2.wav', self.chunk_size, screen_width, screen_height))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm C.wav', self.chunk_size, screen_width, screen_height))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm C-1.wav', self.chunk_size, screen_width, screen_height))
-        self.stream_array.append(Stream('audios/consolidado/base2.wav', self.chunk_size, screen_width, screen_height, linear=True))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm C-2.wav', self.chunk_size, screen_width, screen_height))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm E.wav', self.chunk_size, screen_width, screen_height))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm E-1.wav', self.chunk_size, screen_width, screen_height))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm E-2.wav', self.chunk_size, screen_width, screen_height))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm G.wav', self.chunk_size, screen_width, screen_height))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm G-1.wav', self.chunk_size, screen_width, screen_height))
-        self.stream_array.append(Stream('audios/consolidado/LluviasConsolidadoHarm G-2.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/Final/base1.wav', self.chunk_size, screen_width, screen_height, linear=True, static_ambient=True))
+        self.stream_array.append(Stream('audios/Final/A1.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/Final/G3.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/Final/E3.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/Final/C3.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/Final/A3.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/Final/G2.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/Final/E2.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/Final/base2.wav', self.chunk_size, screen_width, screen_height, linear=True, static_ambient=False))
+        self.stream_array.append(Stream('audios/Final/C2.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/Final/A2.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/Final/G1.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/Final/E1.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/Final/C1.wav', self.chunk_size, screen_width, screen_height))
         
-
         self.p = pyaudio.PyAudio()
         self.first_IR, self.IR_rate = librosa.load('audios/IRs/301-LargeHall.wav', sr=44.1e3, dtype=np.float64, mono=False)
         track1_frame = self.stream_array[0].track_data[:,0 : self.chunk_size]
@@ -252,7 +251,7 @@ class AudioBuffer(threading.Thread):
                     if current_stream.ramp_handler.current_fading != 'none':
                         fading = 'out'
                 track += self.process_queue(current_stream, fading)
-            track = self._apply_reverb(track, 0.5)
+            # track = self._apply_reverb(track, 0.5)
             actual_combinated_chunk = self._intercalate_channels2(track)
             ret_data = actual_combinated_chunk.astype(np.float32).tobytes()
             return (ret_data, pyaudio.paContinue)
