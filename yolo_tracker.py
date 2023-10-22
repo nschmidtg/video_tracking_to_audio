@@ -35,7 +35,7 @@ while True:
         # Open the video file
         video_path = "audios/video.mp4"
         cap = cv2.VideoCapture(0)
-        max_n_people = 14
+        max_n_people = 1
 
         success, frame = cap.read()
         if success:
@@ -58,7 +58,7 @@ while True:
                         half=False,
                         show=False,
                         save=False,
-                        max_det=10,
+                        max_det=max_n_people,
                         classes=0,
                         verbose=False,
                         persist=True,
@@ -79,7 +79,7 @@ while True:
                         for box in sorted_list.values():
                             if people_counter >= max_n_people:
                                 break
-                            audio_buffer.stream_array[people_counter].coordinates.add_value(box[0])
+                            audio_buffer.stream_array[people_counter].coordinates.add_value(box)
                             people_counter += 1
 
                     # Visualize the results on the frame

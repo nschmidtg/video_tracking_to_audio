@@ -6,11 +6,12 @@ import time
 from queue import Queue
 import threading
 import math
+import os
 
 
 class Control:
     def __init__(self):
-        self.last_value = 0
+        self.last_value = [0, 0, 0, 0]
         self.queue = Queue(1)
 
     def add_value(self, value):
@@ -18,12 +19,17 @@ class Control:
             self.queue.get()
         self.queue.put(value)
 
-    def get_position_for_coordinate(self, chunk_size):
-        current_value = self.queue.get() if self.queue.qsize() > 0 else self.last_value
-        current_coordinate = current_value
-        last_coordinate = self.last_value
+    def get_position_for_coordinate(self, chunk_size, width):
+        current_value = []
+        if self.queue.qsize() > 0:
+            current_value = self.queue.get()
+        else:
+            current_value = self.last_value
+        current_coordinate = current_value[0]
+        last_coordinate = self.last_value[0]
+        print(0, current_coordinate, last_coordinate, width)
         array = np.linspace(last_coordinate, current_coordinate, chunk_size)
-        self.last_value = current_value
+        self.last_value = [current_coordinate, current_value[1], current_value[2], current_value[3]]
         return array
 
 
@@ -152,16 +158,16 @@ class Stream(threading.Thread):
         return remaining_frames
     
     def _apply_stereo_panning(self, chunk):
-        print(self.ramp_handler.current_fading, self.ramp_last_value)
+        print(self.ramp_handler.current_fading, self.coordinates.last_value)
         if self.ramp_handler.current_fading == 'playing' or self.ramp_handler.current_fading == 'in':
-            ramp = self.coordinates.get_position_for_coordinate(chunk.shape[1])
-            chunk_l = np.multiply(chunk[1, :], (1 / self.screen_width) * ramp)
-            chunk_r = np.multiply(chunk[0, :], 1-(1 / self.screen_width) * ramp)
+            ramp = self.coordinates.get_position_for_coordinate(chunk.shape[1], self.screen_width)
+            chunk_r = np.multiply(chunk[1, :], (1 / self.screen_width) * ramp)
+            chunk_l = np.multiply(chunk[0, :], 1-(1 / self.screen_width) * ramp)
             self.ramp_last_value = ramp[-1]
         else:
-            chunk_l = np.multiply(chunk[1, :], (1 / self.screen_width) * self.ramp_last_value)
-            chunk_r = np.multiply(chunk[0, :], 1-(1 / self.screen_width) * self.ramp_last_value)
-            self.coordinates.last_value = self.ramp_last_value
+            chunk_r = np.multiply(chunk[1, :], (1 / self.screen_width) * self.ramp_last_value)
+            chunk_l = np.multiply(chunk[0, :], 1-(1 / self.screen_width) * self.ramp_last_value)
+            self.coordinates.last_value[0] = self.ramp_last_value
         
         return np.array((chunk_l, chunk_r))
 
@@ -210,7 +216,6 @@ class AudioBuffer(threading.Thread):
     def process_queue(self, stream, fading):
         frames = stream.queue.get()
         frames = frames * stream.ramp_handler.get_next_fade(self.chunk_size, fading)
-        # frames = frames * self.compute_velocity_from_entropy(index)
         return frames
     
     def _apply_reverb(self, chunk, wet_level=0.2):
@@ -233,12 +238,13 @@ class AudioBuffer(threading.Thread):
                 current_stream = self.stream_array[i]
                 fading = current_stream.ramp_handler.current_fading
                 if i < current_n_people:
-                    if current_stream.ramp_handler.current_fading != 'playing':
+                    if current_stream.ramp_handler.current_fading == 'none':
                         fading = 'in'
                 else:
                     if current_stream.ramp_handler.current_fading != 'none':
                         fading = 'out'
                 track += self.process_queue(current_stream, fading)
+            track = track * self.compute_velocity_from_entropy()
             track = self._apply_reverb(track, 0.4)
             actual_combinated_chunk = self._intercalate_channels2(track)
             ret_data = actual_combinated_chunk.astype(np.float32).tobytes()
@@ -273,17 +279,17 @@ class AudioBuffer(threading.Thread):
         return to_be_populated
 
     def _sum_distances(self, index):
-        current = self.settings.coords[index]
+        current = self.stream_array[index].coordinates.last_value
         total = 0
-        for coords in self.settings.coords:
+        for stream in self.stream_array:
             total += self.calculate_distance(current, coords)
         return total
             
-    def compute_velocity_from_entropy(self, index):
+    def compute_velocity_from_entropy(self):
         value = 0.3
-        if self.people_counter > 1:
-            max_value = self.calculate_distance((0, 0), (self.screen_width, self.screen_height)) * (self.settings.people_counter - 1)
-            value = math.pow(1 - (self._sum_distances(index) / max_value), 3)
+        # if self.people_counter > 1:
+        #     max_value = self.calculate_distance((0, 0), (self.screen_width, self.screen_height)) * (self.people_counter - 1)
+        #     value = math.pow(1 - (self._sum_distances(index) / max_value), 3)
         return value
 
     def calculate_distance(self, A, B):
