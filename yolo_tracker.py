@@ -79,7 +79,7 @@ while True:
                         for box in sorted_list.values():
                             if people_counter >= max_n_people:
                                 break
-                            audio_buffer.stream_array[people_counter].coordinates.add_value(box)
+                            audio_buffer.stream_array[people_counter].coordinates.add_value(box[0])
                             people_counter += 1
 
                     # Visualize the results on the frame
