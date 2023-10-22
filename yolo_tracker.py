@@ -34,7 +34,7 @@ while True:
 
         # Open the video file
         video_path = "audios/video.mp4"
-        cap = cv2.VideoCapture(video_path)
+        cap = cv2.VideoCapture(0)
         max_n_people = 14
 
         success, frame = cap.read()
