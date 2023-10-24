@@ -28,6 +28,7 @@ class Control:
         current_coordinate = current_value[0]
         last_coordinate = self.last_value[0]
         max_jump = int(width/14)
+        print(current_coordinate, last_coordinate)
         if np.abs(current_coordinate - last_coordinate) > max_jump:
             current_coordinate = last_coordinate + np.sign(current_coordinate - last_coordinate) * max_jump
         array = np.linspace(last_coordinate, current_coordinate, chunk_size)
@@ -185,7 +186,7 @@ class AudioBuffer(threading.Thread):
         self.screen_height = screen_height
         self.max_n_people = max_n_people
         self.stream_array = []
-        self.chunk_size = int(1100)
+        self.chunk_size = int(1100*4) # 4400 100ms chord 
         self.stream_array.append(Stream('audios/Final/base1.wav', self.chunk_size, screen_width, screen_height, linear=True, static_ambient=True))
         self.stream_array.append(Stream('audios/Final/A1.wav', self.chunk_size, screen_width, screen_height))
         self.stream_array.append(Stream('audios/Final/G3.wav', self.chunk_size, screen_width, screen_height))
@@ -215,7 +216,8 @@ class AudioBuffer(threading.Thread):
             rate=int(44100),
             output=True,
             stream_callback=self.get_callback(),
-            frames_per_buffer=self.chunk_size
+            frames_per_buffer=self.chunk_size,
+            output_device_index=5,
         )
         threading.Thread.__init__(self)
 
@@ -251,7 +253,7 @@ class AudioBuffer(threading.Thread):
                     if current_stream.ramp_handler.current_fading != 'none':
                         fading = 'out'
                 track += self.process_queue(current_stream, fading)
-            # track = self._apply_reverb(track, 0.5)
+            track = self._apply_reverb(track, 0.5)
             actual_combinated_chunk = self._intercalate_channels2(track)
             ret_data = actual_combinated_chunk.astype(np.float32).tobytes()
             return (ret_data, pyaudio.paContinue)
