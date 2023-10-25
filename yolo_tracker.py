@@ -18,7 +18,11 @@ layout = [
 ]
 
 
+
 window = sg.Window("Video Tracking to Audio", layout)
+
+# python -m sounddevice
+# list all sound devices: import sounddevice as sd;sd.query_devices();
 
 
 
@@ -35,7 +39,7 @@ while True:
         # Open the video file
         video_path = "audios/video.mp4"
         cap = cv2.VideoCapture(video_path) # or 0 for webcam
-        max_n_people = 14
+        max_n_people = 3
 
         success, frame = cap.read()
         if success:

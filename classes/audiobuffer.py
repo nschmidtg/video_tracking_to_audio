@@ -19,20 +19,28 @@ class Control:
             self.queue.get()
         self.queue.put(value)
 
-    def get_position_for_coordinate(self, chunk_size, width):
+    def get_position_for_coordinate(self, chunk_size, width, index=0):
         current_value = []
         if self.queue.qsize() > 0:
             current_value = self.queue.get()
+            if index == 1:
+                print("inside if", current_value)
         else:
             current_value = self.last_value
+            if index == 1:
+                print("inside else", current_value)
         current_coordinate = current_value[0]
         last_coordinate = self.last_value[0]
         max_jump = int(width/14)
-        print(current_coordinate, last_coordinate)
+        
         if np.abs(current_coordinate - last_coordinate) > max_jump:
             current_coordinate = last_coordinate + np.sign(current_coordinate - last_coordinate) * max_jump
+            if index == 1:
+                print("inside if 2", current_coordinate)
         array = np.linspace(last_coordinate, current_coordinate, chunk_size)
         self.last_value = [current_coordinate, current_value[1], current_value[2], current_value[3]]
+        if index == 1:
+            print(current_coordinate, last_coordinate, self.last_value)
         return array
 
 
@@ -75,7 +83,8 @@ class RampHandler():
 
 
 class Stream(threading.Thread):
-    def __init__(self, path, chunk_size, screen_width, screen_height, linear=False, static_ambient=False):
+    def __init__(self, path, chunk_size, screen_width, screen_height, linear=False, static_ambient=False, index=0):
+        self.index=index
         self.static_ambient = static_ambient
         self.track_data, self.track_rate = librosa.load(path, sr=44.1e3, dtype=np.float64, mono=False, duration=20)
         self.screen_width = screen_width
@@ -136,7 +145,7 @@ class Stream(threading.Thread):
                 current_stack_length += self.hop_length
             samples_per_chunk += 1
             
-        chunk = self._apply_stereo_panning(chunk)
+        chunk = self._apply_stereo_panning(chunk, self.index)
 
         self.queue.put(chunk)
         return remaining_frames
@@ -166,9 +175,9 @@ class Stream(threading.Thread):
         self.read_from = read_from
         return remaining_frames
     
-    def _apply_stereo_panning(self, chunk):
+    def _apply_stereo_panning(self, chunk, index=0):
         if self.ramp_handler.current_fading == 'playing' or self.ramp_handler.current_fading == 'in':
-            ramp = self.coordinates.get_position_for_coordinate(chunk.shape[1], self.screen_width)
+            ramp = self.coordinates.get_position_for_coordinate(chunk.shape[1], self.screen_width, self.index)
             chunk_r = np.multiply(chunk[1, :], (1 / self.screen_width) * ramp)
             chunk_l = np.multiply(chunk[0, :], 1-(1 / self.screen_width) * ramp)
             self.ramp_last_value = ramp[-1]
@@ -187,8 +196,8 @@ class AudioBuffer(threading.Thread):
         self.max_n_people = max_n_people
         self.stream_array = []
         self.chunk_size = int(1100*4) # 4400 100ms chord 
-        self.stream_array.append(Stream('audios/Final/base1.wav', self.chunk_size, screen_width, screen_height, linear=True, static_ambient=True))
-        self.stream_array.append(Stream('audios/Final/A1.wav', self.chunk_size, screen_width, screen_height))
+        self.stream_array.append(Stream('audios/Final/base1.wav', self.chunk_size, screen_width, screen_height, linear=False, static_ambient=False))
+        self.stream_array.append(Stream('audios/Final/A1.wav', self.chunk_size, screen_width, screen_height, index=1))
         self.stream_array.append(Stream('audios/Final/G3.wav', self.chunk_size, screen_width, screen_height))
         self.stream_array.append(Stream('audios/Final/E3.wav', self.chunk_size, screen_width, screen_height))
         self.stream_array.append(Stream('audios/Final/C3.wav', self.chunk_size, screen_width, screen_height))
@@ -217,7 +226,7 @@ class AudioBuffer(threading.Thread):
             output=True,
             stream_callback=self.get_callback(),
             frames_per_buffer=self.chunk_size,
-            output_device_index=5,
+            # output_device_index=5,
         )
         threading.Thread.__init__(self)
 
@@ -309,3 +318,6 @@ class AudioBuffer(threading.Thread):
 
     def calculate_distance(self, A, B):
         return math.sqrt(pow((A[0] - B[0]), 2) + pow((A[1] - B[1]), 2))
+
+
+
