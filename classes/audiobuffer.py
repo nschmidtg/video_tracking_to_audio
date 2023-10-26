@@ -93,13 +93,12 @@ class Stream(threading.Thread):
         self.queue = Queue()
         self.buffer_alive = True
         self.chunk_size = chunk_size
-        self.ramp_handler = RampHandler(self.chunk_size * 100)
+        self.ramp_handler = RampHandler(self.chunk_size * 60)
         self.empty_chunk = np.zeros((2, chunk_size))
         self.sample_length = int(chunk_size//2)
-        self.fade_length = int(self.sample_length//10)
+        self.empty_sample = np.zeros((2, self.sample_length))
+        self.fade_length = 0
         self.hop_length = self.sample_length - self.fade_length
-        self.fade_in = np.linspace(0, 1, self.fade_length)
-        self.fade_out = np.linspace(1, 0, self.fade_length)
         self.populate_function = self._populate_linear_chunk if linear else self._populate_random_chunk
         self.read_from = 0
         self.ramp_last_value = self.screen_width//2
@@ -114,13 +113,13 @@ class Stream(threading.Thread):
         self.read_from = self.random.randint(0, self.track_data.shape[1] - self.chunk_size)
         
     def run(self):
-        remaining_frames = np.zeros((2, self.sample_length))
+        remaining_frames = self.empty_sample.copy()
         self.reset_random()
         while self.buffer_alive:
             if self.queue.qsize() < 5:
                 remaining_frames = self.populate_function(remaining_frames)
             else:
-                time.sleep(0.005)
+                time.sleep(0.01)
                 
     def _populate_random_chunk(self, remaining_frames):        
         samples_per_chunk = 0
@@ -130,13 +129,10 @@ class Stream(threading.Thread):
         while current_stack_length < self.chunk_size:
             if current_stack_length == 0 and np.any(remaining_frames):
                 chunk[:, :remaining_frames.shape[1]] += remaining_frames
-                remaining_frames = np.zeros((2, self.sample_length))
+                remaining_frames = self.empty_sample.copy()
             else:
                 read_from = self.random.randint(0, self.track_data.shape[1] - self.sample_length)
                 sample = self.track_data[:, read_from:read_from + self.sample_length]
-                # add a little fade in and out to avoid clicks
-                sample[:, :self.fade_length] *= self.fade_in
-                sample[:, -self.fade_length:] *= self.fade_out
                 if (current_stack_length + self.sample_length <= self.chunk_size):
                     chunk[:, current_stack_length:current_stack_length + self.sample_length] += sample
                 else:
@@ -197,7 +193,7 @@ class AudioBuffer(threading.Thread):
         self.max_n_people = max_n_people
         self.stream_array = []
         self.chunk_size = int(1100*4) # 4400 100ms chord 
-        self.stream_array.append(Stream('audios/Final/base1.wav', self.chunk_size, screen_width, screen_height, linear=True, static_ambient=True))
+        self.base_stream = Stream('audios/Final/base1.wav', self.chunk_size, screen_width, screen_height, linear=True, static_ambient=True)
         self.stream_array.append(Stream('audios/Final/A1.wav', self.chunk_size, screen_width, screen_height))
         self.stream_array.append(Stream('audios/Final/G3.wav', self.chunk_size, screen_width, screen_height))
         self.stream_array.append(Stream('audios/Final/E3.wav', self.chunk_size, screen_width, screen_height))
@@ -263,6 +259,7 @@ class AudioBuffer(threading.Thread):
                     if current_stream.ramp_handler.current_fading != 'none':
                         fading = 'out'
                 track += self.process_queue(current_stream, fading)
+            track += self.process_queue(self.base_stream, 'playing')
             track = self._apply_reverb(track, 0.5)
             actual_combinated_chunk = self._intercalate_channels2(track)
             ret_data = actual_combinated_chunk.astype(np.float32).tobytes()
@@ -270,6 +267,7 @@ class AudioBuffer(threading.Thread):
         return callback
     
     def start(self):
+        self.base_stream.start()
         for i in range(self.max_n_people):
             stream = self.stream_array[i]
             stream.start()
@@ -282,6 +280,7 @@ class AudioBuffer(threading.Thread):
         for i in range(self.max_n_people):
             stream = self.stream_array[i]
             stream.join()
+        self.base_stream.join()
         self.stream.stop_stream()
         self.stream.close()
         self.p.terminate()
@@ -305,7 +304,7 @@ class AudioBuffer(threading.Thread):
             
     def compute_velocity_from_entropy(self):
         value = 0.3
-        playing = 0
+        playing = 1
         for stream in self.stream_array:
             if stream.ramp_handler.current_fading != 'none':
                 playing += 1

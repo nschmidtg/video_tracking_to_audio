@@ -3,27 +3,42 @@ from classes.audiobuffer import AudioBuffer
 import PySimpleGUI as sg
 import collections
 import cv2
+import sounddevice as sd
 
 from ultralytics import YOLO
 
+audio_devices = {f"{audio_device['index']}: {audio_device['name']}":audio_device['index'] for audio_device in sd.query_devices()}
+
+
+audio_device_index = 0
+model_path = "model/yolov8n.pt"
+device = "mps"
+max_n_people=13
+video_path = "audios/video.mp4" #0
 layout = [
     [
         sg.Frame(
             "Settings",
-            [[
-                sg.Button("Start", key="START")
-            ]]
+            [
+                [
+                    sg.Combo(list(audio_devices.keys()), default_value=list(audio_devices.keys())[0], readonly=True, enable_events=True, key="AUDIO_DEVICE"),
+                    sg.Combo(["yolov8n.pt", "yolov8m.pt", "yolov8l.pt", "yolov8x.pt"], default_value="yolov8n.pt", key="MODEL", readonly=True, enable_events=True),
+                    sg.Combo(["CPU", "CUDA", "MPS"], default_value="CPU", key=device, readonly=True, enable_events=True),
+                    sg.Combo(range(1, max_n_people), default_value=max_n_people, key="MAX_N_PEOPLE", readonly=True, enable_events=True)
+                    
+                
+                ],
+                [
+                    sg.Button("Start", key="START")
+                ]
+            ]
         )
     ]
 ]
 
 
 
-window = sg.Window("Video Tracking to Audio", layout)
-
-# python -m sounddevice
-# list all sound devices: import sounddevice as sd;sd.query_devices();
-
+window = sg.Window("APARALIUS", layout)
 
 
 while True:
@@ -31,15 +46,23 @@ while True:
 
     if event == sg.WIN_CLOSED or event == "Exit":
         break
+    if event == "AUDIO_DEVICE":
+        audio_device_index = audio_devices[values["AUDIO_DEVICE"]]
+        sd.default.device = audio_device_index
+    if event == "MODEL":
+        model_path = f"model/{values['MODEL']}"
+    if event == "DEVICE":
+        device = values["DEVICE"]
+    if event == "MAX_N_PEOPLE":
+        max_n_people = values["MAX_N_PEOPLE"]
     if event == "START":
 
         # Load the YOLOv8 model
-        model = YOLO('model/yolov8n.pt') # yolov8n.pt, yolov8n-pose, yolov8n-seg
+        model = YOLO(model_path) # yolov8n.pt, yolov8n-pose, yolov8n-seg
 
         # Open the video file
-        video_path = "audios/video.mp4"
+        
         cap = cv2.VideoCapture(video_path) # or 0 for webcam
-        max_n_people = 14
 
         success, frame = cap.read()
         if success:
@@ -66,7 +89,7 @@ while True:
                         classes=0,
                         verbose=False,
                         persist=True,
-                        device="mps", # cpu cuda mps
+                        device=device,
                     )
 
                     # Get the boxes and track IDs
@@ -89,7 +112,7 @@ while True:
                     # Visualize the results on the frame
                     annotated_frame = results[0].plot()
                     # Display the annotated frame
-                    cv2.imshow("YOLOv8 Tracking", annotated_frame)
+                    cv2.imshow("APARALIUS", annotated_frame)
 
                     # Break the loop if 'q' is pressed
                     if cv2.waitKey(1) & 0xFF == ord("q"):
@@ -102,6 +125,8 @@ while True:
             # Release the video capture object and close the display window
             cap.release()
             cv2.destroyAllWindows()
+            audio_buffer.join()
+            break
 
         break
 window.close()
