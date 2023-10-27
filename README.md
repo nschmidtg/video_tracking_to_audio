@@ -37,4 +37,6 @@ python yolo_tracker.py
 ```
 git clone git@github.com:ultralytics/ultralytics.git
 pyinstaller .\yolo_tracker.spec --noconfirm
+mkdir dir/audios
+mv your-audio.wav dir/audios/your-audio.wav
 ```
