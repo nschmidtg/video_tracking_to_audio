@@ -184,7 +184,7 @@ class AudioBuffer(threading.Thread):
         self.max_n_people = max_n_people
         self.stream_array = []
         self.chunk_size = int(1100*4) # 4400 100ms chord 
-        self.base_stream = Stream('audios/Final/base1.wav', self.chunk_size, screen_width, screen_height, linear=True, static_ambient=True)
+        self.base_stream = Stream('../audios/Final/base1.wav', self.chunk_size, screen_width, screen_height, linear=True, static_ambient=True)
         self.stream_array.append(Stream('audios/Final/A1.wav', self.chunk_size, screen_width, screen_height))
         self.stream_array.append(Stream('audios/Final/G3.wav', self.chunk_size, screen_width, screen_height))
         self.stream_array.append(Stream('audios/Final/E3.wav', self.chunk_size, screen_width, screen_height))

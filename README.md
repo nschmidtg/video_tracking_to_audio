@@ -18,7 +18,7 @@ pip install -r requirements.txt
 ### Windows
 
 ```
-conda create -n yolo python=3.8 wheel=0.38.4 ffmpeg=4.2.2 pyinstaller=5.6.2
+conda create -n yolo python=3.8
 conda activate yolo
 pip install -r requirements.txt
 git clone ultralytics
@@ -32,18 +32,9 @@ python yolo_tracker.py
 
 ## Compile
 
-### MacOS
-
-```
-pyinstaller yolo_tracker.spec --noconfirm
-
-pyinstaller yolo_tracker.py --onefile --noconfirm --windowed --hidden-import=cv2.cv2 --paths=classes --add-data="audios/bounce.wav:audios" --clean --additional-hooks-dir=~/miniconda3/envs/yolov8/lib/python3.8/site-packages/torch/lib/libtorch_python.dylib --additional-hooks-dir=~/miniconda3/envs/yolov8/lib/python3.8/site-packages/torch/lib/libtorch.dylib --additional-hooks-dir=~/miniconda3/envs/yolov8/lib/python3.8/site-packages/torch/lib/libtorch_global_deps.dylib
-
-5344
-```
-
 ### Windows
 
 ```
-TODO
+git clone git@github.com:ultralytics/ultralytics.git
+pyinstaller .\yolo_tracker.spec --noconfirm
 ```
