@@ -1,4 +1,3 @@
-from collections import defaultdict
 from classes.audiobuffer import AudioBuffer
 import PySimpleGUI as sg
 import collections
@@ -14,7 +13,7 @@ audio_device_index = 0
 model_path = "model/yolov8n.pt"
 device = "mps"
 max_n_people=13
-video_path = "audios/video.mp4" #0
+video_path = 0 #"audios/video.mp4" #0
 layout = [
     [
         sg.Frame(

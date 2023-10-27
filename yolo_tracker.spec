@@ -1,31 +1,24 @@
 # -*- mode: python ; coding: utf-8 -*-
 
 
-block_cipher = None
-
-
 a = Analysis(
     ['yolo_tracker.py'],
     pathex=['classes'],
-    binaries=['~/miniconda3/envs/yolov8/lib/python3.8/site-packages/torch/lib/libtorch_python.dylib', '~/miniconda3/envs/yolov8/lib/python3.8/site-packages/torch/lib/libtorch.dylib', '~/miniconda3/envs/yolov8/lib/python3.8/site-packages/torch/lib/libtorch_global_deps.dylib'],
-    datas=[('audios/bounce.wav', 'audios')],
-    hiddenimports=['cv2.cv2','torch'],
-    hookspath=['~/miniconda3/envs/yolov8/lib/python3.8/site-packages'],
+    binaries=[],
+    datas=[('ultralytics','.'), ('model/yolov8n.pt','./model'), ("audios/Final/A1.wav","./audios/Final"),("audios/Final/A2.wav","./audios/Final"),("audios/Final/A3.wav","./audios/Final"),("audios/Final/C1.wav","./audios/Final"),("audios/Final/C2.wav","./audios/Final"),("audios/Final/C3.wav","./audios/Final"),("audios/Final/E1.wav","./audios/Final"),("audios/Final/E2.wav","./audios/Final"),("audios/Final/E3.wav","./audios/Final"),("audios/Final/G1.wav","./audios/Final"),("audios/Final/G2.wav","./audios/Final"),("audios/Final/G3.wav","./audios/Final"),("audios/Final/base1.wav","./audios/Final"),("audios/Final/base2.wav","./audios/Final"),("audios/IRs/301-LargeHall.wav","./audios/IRs")],
+    hiddenimports=[],
+    hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
     noarchive=False,
 )
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
-    a.zipfiles,
     a.datas,
     [],
     name='yolo_tracker',
@@ -33,18 +26,20 @@ exe = EXE(
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
-    console=False,
+    console=True,
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
+    icon=['favicon-viaje-a-la-lluvia-01.ico'],
 )
-app = BUNDLE(
+coll = COLLECT(
     exe,
-    name='yolo_tracker.app',
-    icon=None,
-    bundle_identifier=None,
+    a.binaries,
+    a.datas,
+    strip=False,
+    upx=True,
+    upx_exclude=[],
+    name='yolo_tracker',
 )

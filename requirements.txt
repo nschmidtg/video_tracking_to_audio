@@ -1,4 +1,6 @@
 PyAudio==0.2.13
-ultralytics==8.0.164
+ultralytics==8.0.164 #8.0.202
 librosa==0.10.1
 pysimplegui==4.60.5
+sounddevice==0.4.6
+lapx

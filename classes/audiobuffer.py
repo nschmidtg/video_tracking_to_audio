@@ -19,28 +19,20 @@ class Control:
             self.queue.get()
         self.queue.put(value)
 
-    def get_position_for_coordinate(self, chunk_size, width, index=0):
+    def get_position_for_coordinate(self, chunk_size, width):
         current_value = []
         if self.queue.qsize() > 0:
             current_value = self.queue.get()
-            if index == 1:
-                print("inside if", current_value)
         else:
             current_value = self.last_value
-            if index == 1:
-                print("inside else", current_value)
         current_coordinate = current_value[0]
         last_coordinate = self.last_value[0]
         max_jump = int(width/14)
         
         if np.abs(current_coordinate - last_coordinate) > max_jump:
-            if index == 1:
-                print("inside if 2")
             current_coordinate = last_coordinate + np.sign(current_coordinate - last_coordinate) * max_jump
         array = np.linspace(last_coordinate, current_coordinate, chunk_size)
         self.last_value = [current_coordinate, current_value[1], current_value[2], current_value[3]]
-        if index == 1:
-            print(current_coordinate, last_coordinate, self.last_value)
         return array
 
 
@@ -49,7 +41,7 @@ class RampHandler():
         self.ramp_length = ramp_length
         self.ramp_up = np.linspace(0, 1, self.ramp_length)
         self.ramp_down = np.linspace(1, 0, self.ramp_length)
-        self.current_y_value = 1
+        self.current_y_value = 0
         self.current_fading = 'none'
 
     def get_next_fade(self, chunk_size, fading):
@@ -83,8 +75,7 @@ class RampHandler():
 
 
 class Stream(threading.Thread):
-    def __init__(self, path, chunk_size, screen_width, screen_height, linear=False, static_ambient=False, index=0):
-        self.index=index
+    def __init__(self, path, chunk_size, screen_width, screen_height, linear=False, static_ambient=False):
         self.static_ambient = static_ambient
         self.track_data, self.track_rate = librosa.load(path, sr=44.1e3, dtype=np.float64, mono=False)
         self.screen_width = screen_width
@@ -142,7 +133,7 @@ class Stream(threading.Thread):
                 current_stack_length += self.hop_length
             samples_per_chunk += 1
             
-        chunk = self._apply_stereo_panning(chunk, self.index)
+        chunk = self._apply_stereo_panning(chunk)
 
         self.queue.put(chunk)
         return remaining_frames
@@ -156,7 +147,7 @@ class Stream(threading.Thread):
         while current_stack_length < self.chunk_size:
             if current_stack_length == 0 and np.any(remaining_frames):
                 chunk[:, :remaining_frames.shape[1]] += remaining_frames
-                remaining_frames = np.zeros((2, self.sample_length))
+                remaining_frames = self.empty_sample.copy()
             else:
                 sample = self.track_data[:, read_from:read_from + self.sample_length]
                 if (current_stack_length + self.sample_length <= self.chunk_size):
@@ -172,9 +163,9 @@ class Stream(threading.Thread):
         self.read_from = read_from
         return remaining_frames
     
-    def _apply_stereo_panning(self, chunk, index=0):
+    def _apply_stereo_panning(self, chunk):
         if self.ramp_handler.current_fading == 'playing' or self.ramp_handler.current_fading == 'in':
-            ramp = self.coordinates.get_position_for_coordinate(chunk.shape[1], self.screen_width, self.index)
+            ramp = self.coordinates.get_position_for_coordinate(chunk.shape[1], self.screen_width)
             chunk_r = np.multiply(chunk[1, :], (1 / self.screen_width) * ramp)
             chunk_l = np.multiply(chunk[0, :], 1-(1 / self.screen_width) * ramp)
             self.ramp_last_value = ramp[-1]
@@ -184,7 +175,7 @@ class Stream(threading.Thread):
             self.coordinates.last_value[0] = self.ramp_last_value
         
         return np.array((chunk_l, chunk_r))
-
+    
 class AudioBuffer(threading.Thread):
     def __init__(self, screen_width, screen_height, max_n_people):
         self.tail = Queue()
@@ -211,8 +202,9 @@ class AudioBuffer(threading.Thread):
         self.p = pyaudio.PyAudio()
         self.first_IR, self.IR_rate = librosa.load('audios/IRs/301-LargeHall.wav', sr=44.1e3, dtype=np.float64, mono=False)
         track1_frame = self.stream_array[0].track_data[:,0 : self.chunk_size]
-        track1 = ss.fftconvolve(track1_frame, self.first_IR, mode="full", axes=1)
-        self.tail.put(np.zeros(track1.shape))
+        self.track1 = ss.fftconvolve(track1_frame, self.first_IR, mode="full", axes=1)
+        self.reverb_empty_track = np.zeros((2, self.track1.shape[1]))
+        self.tail.put(np.zeros(self.track1.shape))
         self.people_counter = 0
         self.empty_chunk = np.zeros((2, self.chunk_size))
         self.doubled_empty_chunk = np.zeros((self.chunk_size * 2))
@@ -233,16 +225,20 @@ class AudioBuffer(threading.Thread):
             frames = frames * stream.ramp_handler.get_next_fade(self.chunk_size, fading)
         return frames * self.compute_velocity_from_entropy()
     
+    
+    
     def _apply_reverb(self, chunk, wet_level=0.2):
         track_rev = ss.fftconvolve(chunk, self.first_IR, mode="full", axes=1)
-        dry_track_with_zeros = np.concatenate([chunk, np.zeros((2, track_rev.shape[1] - chunk.shape[1]))], axis=1)
+        dry_track_with_zeros = self.reverb_empty_track.copy()
+        dry_track_with_zeros[:, :self.chunk_size] = chunk
         tail = self.tail.get()
         track = np.multiply(track_rev, wet_level) + np.multiply(dry_track_with_zeros, 1-wet_level)
         tail_plus_track = tail + track
         actual_tail = tail_plus_track[:, self.chunk_size:]
         actual_chunk = tail_plus_track[:, :self.chunk_size]
-        actual_tail = np.concatenate([actual_tail, np.zeros((2, track_rev.shape[1] - actual_tail.shape[1]))], axis=1)
-        self.tail.put(actual_tail)
+        empty_tail = self.reverb_empty_track.copy()
+        empty_tail[:,:actual_tail.shape[1]] = actual_tail
+        self.tail.put(empty_tail)
         return actual_chunk
         
     def get_callback(self):
@@ -258,10 +254,11 @@ class AudioBuffer(threading.Thread):
                 else:
                     if current_stream.ramp_handler.current_fading != 'none':
                         fading = 'out'
-                track += self.process_queue(current_stream, fading)
+                if fading != 'none':
+                    track += self.process_queue(current_stream, fading)
             track += self.process_queue(self.base_stream, 'playing')
             track = self._apply_reverb(track, 0.5)
-            actual_combinated_chunk = self._intercalate_channels2(track)
+            actual_combinated_chunk = self._intercalate_channels(track)
             ret_data = actual_combinated_chunk.astype(np.float32).tobytes()
             return (ret_data, pyaudio.paContinue)
         return callback
@@ -288,12 +285,6 @@ class AudioBuffer(threading.Thread):
     
     def _intercalate_channels(self, chunk):
         return np.ravel(np.column_stack((chunk[0, :], chunk[1, :])))
-    
-    def _intercalate_channels2(self, chunk):
-        to_be_populated = self.doubled_empty_chunk.copy()
-        to_be_populated[::2] = chunk[0, :]
-        to_be_populated[1::2] = chunk[1, :]
-        return to_be_populated
 
     def _sum_distances(self, index):
         current = self.stream_array[index].coordinates.last_value

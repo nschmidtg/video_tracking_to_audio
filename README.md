@@ -18,9 +18,10 @@ pip install -r requirements.txt
 ### Windows
 
 ```
-conda create -n yolo python=3.8 wheel=0.38.4 ffmpeg=4.2.2 
+conda create -n yolo python=3.8 wheel=0.38.4 ffmpeg=4.2.2 pyinstaller=5.6.2
 conda activate yolo
 pip install -r requirements.txt
+git clone ultralytics
 ```
 
 ## Usage
