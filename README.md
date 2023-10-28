@@ -21,13 +21,12 @@ pip install -r requirements.txt
 conda create -n yolo python=3.8
 conda activate yolo
 pip install -r requirements.txt
-git clone ultralytics
 ```
 
 ## Usage
 
 ```
-python yolo_tracker.py
+python aparalius.py
 ```
 
 ## Compile
@@ -37,10 +36,10 @@ python yolo_tracker.py
 ```
 conda activate yolo
 git clone git@github.com:ultralytics/ultralytics.git
-pip install -e .\ultralytics\
-pyinstaller .\yolo_tracker.spec --noconfirm
+pyinstaller .\aparalius.spec --noconfirm
 mkdir dist/audios
 mkdir dist/audios/Final
 mkdir dist/audios/IRs
-mv your-audio.wav dist/audios/Final/your-audio.wav
+mv your-audios.wav dist/audios/Final/your-audio.wav
+mv your-IR.wav dist/audios/Final/IRs/your-IR.wav
 ```
