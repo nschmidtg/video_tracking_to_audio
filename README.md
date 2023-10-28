@@ -35,8 +35,12 @@ python yolo_tracker.py
 ### Windows
 
 ```
+conda activate yolo
 git clone git@github.com:ultralytics/ultralytics.git
+pip install -e .\ultralytics\
 pyinstaller .\yolo_tracker.spec --noconfirm
-mkdir dir/audios
-mv your-audio.wav dir/audios/your-audio.wav
+mkdir dist/audios
+mkdir dist/audios/Final
+mkdir dist/audios/IRs
+mv your-audio.wav dist/audios/Final/your-audio.wav
 ```
