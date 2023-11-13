@@ -14,9 +14,10 @@ def main():
 
     audio_device_index = 0
     model_path = "model/yolov8n.pt"
-    device = "mps"
+    device = "CPU"
     max_n_people=13
-    video_path = 0 #"audios/video.mp4" #0
+    threshold = .20
+    video_path = 0 #"audios/video.mp4" #
     layout = [
         [
             sg.Frame(
@@ -26,7 +27,24 @@ def main():
                         sg.Combo(list(audio_devices.keys()), default_value=list(audio_devices.keys())[0], readonly=True, enable_events=True, key="AUDIO_DEVICE"),
                         sg.Combo(["yolov8n.pt", "yolov8m.pt", "yolov8l.pt", "yolov8x.pt"], default_value="yolov8n.pt", key="MODEL", readonly=True, enable_events=True),
                         sg.Combo(["CPU", "CUDA", "MPS"], default_value="CPU", key=device, readonly=True, enable_events=True),
-                        sg.Combo(range(1, max_n_people), default_value=max_n_people, key="MAX_N_PEOPLE", readonly=True, enable_events=True)
+                        sg.Combo(list(range(1, max_n_people)), default_value=max_n_people, key="MAX_N_PEOPLE", readonly=True, enable_events=True),
+                        sg.Slider(
+                                    orientation="horizontal",
+                                    key="THRESHOLD",
+                                    range=(1, 100),
+                                    default_value=20,
+                                    enable_events=True
+                                ),
+                        sg.Combo(
+                                    key="CAMERA",
+                                    values=[
+                                        "0",
+                                        "1"
+                                    ],
+                                    readonly=True,
+                                    default_value="0",
+                                    enable_events=True
+                                )
                         
                     
                     ],
@@ -54,9 +72,13 @@ def main():
         if event == "MODEL":
             model_path = f"model/{values['MODEL']}"
         if event == "DEVICE":
-            device = values["DEVICE"]
+            device = values["DEVICE"].to_int()
         if event == "MAX_N_PEOPLE":
             max_n_people = values["MAX_N_PEOPLE"]
+        if event == "CAMERA":
+            video_path = values["CAMERA"]
+        if event == "THRESHOLD":
+            threshold = values["THRESHOLD"]/100
         if event == "START":
 
             # Load the YOLOv8 model
@@ -83,7 +105,7 @@ def main():
                         results = model.track(
                             frame,
                             tracker="botsort.yaml", # bytetrack.yaml
-                            conf=0.3,
+                            conf=threshold,
                             half=False,
                             show=False,
                             save=False,
