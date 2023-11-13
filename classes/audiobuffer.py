@@ -84,7 +84,7 @@ class Stream(threading.Thread):
         self.queue = Queue()
         self.buffer_alive = True
         self.chunk_size = chunk_size
-        self.ramp_handler = RampHandler(self.chunk_size * 60)
+        self.ramp_handler = RampHandler(self.chunk_size * 40)
         self.empty_chunk = np.zeros((2, chunk_size))
         self.sample_length = int(chunk_size//2)
         self.empty_sample = np.zeros((2, self.sample_length))
@@ -309,12 +309,12 @@ class AudioBuffer(threading.Thread):
                 points.append(stream.compute_centroid())
         total_distance = self.sum_of_distances(points)
         if len(points) == 0 or total_distance == 0:
-            current_velocity = 0.2
+            current_velocity = 0.3
             track = np.multiply(track, np.linspace(self.last_velocity_value, current_velocity, track.shape[1]))
             self.last_velocity_value = current_velocity
             return track
         max_distance = self.max_sum_of_distances(len(points), self.screen_width, self.screen_height)
-        current_velocity = math.pow(min(1 - total_distance / max_distance, 1), 2)
+        current_velocity = math.pow(min(1 - total_distance / max_distance, 1), 3)
         track = np.multiply(track, np.linspace(self.last_velocity_value, current_velocity, track.shape[1]))
         self.last_velocity_value = current_velocity
         return track
