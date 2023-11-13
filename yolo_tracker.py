@@ -15,7 +15,7 @@ model_path = "model/yolov8n.pt"
 device = "CPU"
 max_n_people=13
 threshold = .20
-video_path = "audios/video.mp4" #0
+video_path = 0 #"audios/video.mp4" #
 layout = [
     [
         sg.Frame(

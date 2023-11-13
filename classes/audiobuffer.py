@@ -176,6 +176,14 @@ class Stream(threading.Thread):
         
         return np.array((chunk_l, chunk_r))
     
+    def compute_area(self):
+        coordinates = self.coordinates.last_value
+        return coordinates[2] * coordinates[3]
+    
+    def compute_centroid(self):
+        coordinates = self.coordinates.last_value
+        return (coordinates[0] + coordinates[2]/2, coordinates[1] + coordinates[3]/2)
+    
 class AudioBuffer(threading.Thread):
     def __init__(self, screen_width, screen_height, max_n_people):
         self.tail = Queue()
@@ -208,6 +216,7 @@ class AudioBuffer(threading.Thread):
         self.people_counter = 0
         self.empty_chunk = np.zeros((2, self.chunk_size))
         self.doubled_empty_chunk = np.zeros((self.chunk_size * 2))
+        self.last_velocity_value = 0
         self.stream = self.p.open(
             format=pyaudio.paFloat32,
             channels=2,
@@ -223,9 +232,7 @@ class AudioBuffer(threading.Thread):
         frames = stream.queue.get()
         if stream.static_ambient is False:
             frames = frames * stream.ramp_handler.get_next_fade(self.chunk_size, fading)
-        return frames * self.compute_velocity_from_entropy()
-    
-    
+        return frames
     
     def _apply_reverb(self, chunk, wet_level=0.2):
         track_rev = ss.fftconvolve(chunk, self.first_IR, mode="full", axes=1)
@@ -257,6 +264,7 @@ class AudioBuffer(threading.Thread):
                 if fading != 'none':
                     track += self.process_queue(current_stream, fading)
             track += self.process_queue(self.base_stream, 'playing')
+            track = self.apply_velocity_from_entropy2(track)
             track = self._apply_reverb(track, 0.5)
             actual_combinated_chunk = self._intercalate_channels(track)
             ret_data = actual_combinated_chunk.astype(np.float32).tobytes()
@@ -285,13 +293,6 @@ class AudioBuffer(threading.Thread):
     
     def _intercalate_channels(self, chunk):
         return np.ravel(np.column_stack((chunk[0, :], chunk[1, :])))
-
-    def _sum_distances(self, index):
-        current = self.stream_array[index].coordinates.last_value
-        total = 0
-        for stream in self.stream_array:
-            total += self.calculate_distance(current, coords)
-        return total
             
     def compute_velocity_from_entropy(self):
         value = 0.3
@@ -299,16 +300,48 @@ class AudioBuffer(threading.Thread):
         for stream in self.stream_array:
             if stream.ramp_handler.current_fading != 'none':
                 playing += 1
-        return max((playing / self.max_n_people + value), 1)
-                
-                
-        # if self.people_counter > 1:
-        #     max_value = self.calculate_distance((0, 0), (self.screen_width, self.screen_height)) * (self.people_counter - 1)
-        #     value = math.pow(1 - (self._sum_distances(index) / max_value), 3)
-        # return value
+        return max(math.pow(playing / self.max_n_people + value,3), 1)
+    
+    def apply_velocity_from_entropy2(self, track):
+        points = []
+        for stream in self.stream_array:
+            if stream.ramp_handler.current_fading != 'none':
+                points.append(stream.compute_centroid())
+        total_distance = self.sum_of_distances(points)
+        if len(points) == 0 or total_distance == 0:
+            current_velocity = 0.2
+            track = np.multiply(track, np.linspace(self.last_velocity_value, current_velocity, track.shape[1]))
+            self.last_velocity_value = current_velocity
+            return track
+        max_distance = self.max_sum_of_distances(len(points), self.screen_width, self.screen_height)
+        current_velocity = math.pow(min(1 - total_distance / max_distance, 1), 2)
+        track = np.multiply(track, np.linspace(self.last_velocity_value, current_velocity, track.shape[1]))
+        self.last_velocity_value = current_velocity
+        return track
+        
+    def max_sum_of_distances(self, N, w, h):
+        # Calculate the perimeter of the square
+        perimeter = 2 * (w + h)
+        # Calculate the distance between each pair of points
+        distance_between_points = perimeter / N
+        # Calculate the sum of distances
+        sum_of_distances = 0
+        for i in range(1, N):
+            sum_of_distances += i * (N - i) * distance_between_points
+
+        return sum_of_distances
 
     def calculate_distance(self, A, B):
         return math.sqrt(pow((A[0] - B[0]), 2) + pow((A[1] - B[1]), 2))
+    
+    def sum_of_distances(self, points):
+        total_distance = 0
+        n = len(points)
+        for i in range(n):
+            for j in range(i+1, n):
+                total_distance += self.calculate_distance(points[i], points[j])
+        return total_distance
+
 
 
 
