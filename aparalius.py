@@ -76,7 +76,7 @@ def main():
         if event == "MAX_N_PEOPLE":
             max_n_people = values["MAX_N_PEOPLE"]
         if event == "CAMERA":
-            video_path = values["CAMERA"]
+            video_path = int(values["CAMERA"])
         if event == "THRESHOLD":
             threshold = values["THRESHOLD"]/100
         if event == "START":
