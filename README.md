@@ -25,6 +25,8 @@ pip install -r requirements.txt
 
 ## Usage
 
+download audios from [google drive](https://drive.google.com/file/d/1WsVUhuXVIcQp_qWwvq5AKje66upTT3dT/view?usp=drive_link), uncompress it and place it on root directory.
+
 ```
 python aparalius.py
 ```
